@@ -517,4 +517,25 @@ public class SQLTypeMappingTest extends SQLTransportIntegrationTest {
         assertEquals(response.rowCount(), 1L);
         assertThat((Integer) response.rows()[0][0], is(10));
     }
+
+    @Test
+    public void testInsertTimestampFullLongRange() throws Exception {
+        execute("create table ts_table (ts timestamp) with (number_of_replicas=0)");
+        ensureYellow();
+        // smallest Long that can be converted to Double without losing precision
+        // equivalent to -29719-04-05T22:13:20.001Z
+        long minDateMillis = -999999999999999L;
+        execute("insert into ts_table (ts) values (?)", new Object[]{ minDateMillis });
+
+        // biggest Long that can be converted to Double without losing precision
+        // equivalent to 33658-09-27T01:46:39.999Z
+        long maxDateMillis = 999999999999999L;
+        execute("insert into ts_table (ts) values (?)", new Object[]{ maxDateMillis });
+
+        refresh();
+        execute("select ts from ts_table order by ts desc");
+        assertThat(response.rowCount(), is(2L));
+        assertThat((Long) response.rows()[0][0], is(maxDateMillis));
+        assertThat((Long) response.rows()[1][0], is(minDateMillis));
+    }
 }
