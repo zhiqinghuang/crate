@@ -56,7 +56,11 @@ public class RelationNormalizerTest extends CrateUnitTest {
     @Test
     public void testOrderByMerge() throws Exception {
         QueriedRelation relation = normalize(
-            "select x from (select * from (select concat(a, a) as aa, x from t1) as t order by aa) as tt order by x");
+            "select x from (" +
+            "   select * from (" +
+            "       select concat(a, a) as aa, x from t1" +
+            "   ) as t order by aa" +
+            ") as tt order by x");
         assertThat(relation, instanceOf(QueriedDocTable.class));
         assertThat(relation.querySpec(),
             isSQL("SELECT doc.t1.x ORDER BY doc.t1.x"));
@@ -134,10 +138,10 @@ public class RelationNormalizerTest extends CrateUnitTest {
     @Test
     public void testWhereMerge() throws Exception {
         QueriedRelation relation = normalize(
-            "select x from (select x, (i + i) as ii from t1 where a = 'a') as tt where ii > 10");
+            "select a from (select x as a, (i + i) as ii from t1 where a = 'a') as tt where ii > 10");
         assertThat(relation, instanceOf(QueriedDocTable.class));
         assertThat(relation.querySpec(),
-            isSQL("SELECT doc.t1.x WHERE ((add(doc.t1.i, doc.t1.i) > 10) AND (doc.t1.a = 'a'))"));
+            isSQL("SELECT doc.t1.x WHERE ((doc.t1.a = 'a') AND (add(doc.t1.i, doc.t1.i) > 10))"));
     }
 
     @Test
@@ -193,7 +197,9 @@ public class RelationNormalizerTest extends CrateUnitTest {
             "  select i + i as ii, xx from (" +
             "    select i, sum(x) as xx from t1 group by i) as t) as tt " +
             "where (ii * 2) > 4 and (xx * 2) > 120");
-        assertThat(relation, instanceOf(QueriedSelectRelation.class));
+        assertThat(relation, instanceOf(QueriedDocTable.class));
+        assertThat(relation.querySpec(), isSQL(
+            "SELECT add(doc.t1.i, doc.t1.i)"));
     }
 
     @Test
@@ -202,7 +208,7 @@ public class RelationNormalizerTest extends CrateUnitTest {
             "select * from (select sum(i) as ii, x from t1 group by x) as tt where x = 10");
         assertThat(relation, instanceOf(QueriedDocTable.class));
         assertThat(relation.querySpec(),
-            isSQL("SELECT sum(doc.t1.i), doc.t1.x WHERE (doc.t1.x = 10) GROUP BY doc.t1.x"));
+            isSQL("SELECT sum(doc.t1.i), doc.t1.x GROUP BY doc.t1.x HAVING (doc.t1.x = 10)"));
     }
 
     @Test

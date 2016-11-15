@@ -55,7 +55,7 @@ final class RelationNormalizer {
                                              Functions functions,
                                              TransactionContext transactionContext) {
         Context context = new Context(functions, relation.fields(), transactionContext);
-        return NormalizerVisitor.normalize(SubselectRewriter.rewrite(relation, context), context);
+        return NormalizerVisitor.normalize(relation, context);
     }
 
     private static Map<QualifiedName, AnalyzedRelation> mapSourceRelations(MultiSourceSelect multiSourceSelect) {

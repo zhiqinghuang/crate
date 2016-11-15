@@ -84,6 +84,7 @@ public class RelationAnalyzer extends DefaultTraversalVisitor<AnalyzedRelation, 
 
     public AnalyzedRelation analyze(Node node, StatementAnalysisContext statementContext) {
         AnalyzedRelation relation = process(node, statementContext);
+        relation = RelationRewriter.rewrite(relation);
         return RelationNormalizer.normalize(relation, functions, statementContext.transactionContext());
     }
 

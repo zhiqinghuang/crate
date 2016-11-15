@@ -22,9 +22,11 @@
 package io.crate.analyze;
 
 import io.crate.analyze.relations.AbstractTableRelation;
+import io.crate.analyze.relations.FieldResolver;
 import io.crate.analyze.relations.QueriedRelation;
 import io.crate.analyze.symbol.Field;
 import io.crate.analyze.symbol.Symbol;
+import io.crate.analyze.symbol.format.SymbolFormatter;
 import io.crate.metadata.*;
 import io.crate.metadata.table.Operation;
 import io.crate.sql.tree.QualifiedName;

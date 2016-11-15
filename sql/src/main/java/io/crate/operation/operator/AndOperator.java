@@ -122,12 +122,16 @@ public class AndOperator extends Operator<Boolean> {
         return new Function(INFO, Arrays.asList(first, second));
     }
 
+    public static Symbol join(Symbol arg1, Symbol arg2) {
+        return new Function(INFO, Arrays.asList(arg1, arg2));
+    }
+
     public static Symbol join(Iterable<? extends Symbol> symbols) {
         Iterator<? extends Symbol> it = symbols.iterator();
         assert it.hasNext() : "argument symbols must have at least one item";
         Symbol first = it.next();
         while (it.hasNext()) {
-            first = new Function(INFO, Arrays.asList(first, it.next()));
+            first = join(first, it.next());
         }
         return first;
     }
