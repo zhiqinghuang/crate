@@ -27,10 +27,8 @@ import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import io.crate.analyze.*;
-import io.crate.analyze.symbol.Aggregations;
 import io.crate.analyze.symbol.Field;
 import io.crate.analyze.symbol.Symbol;
-import io.crate.analyze.symbol.SymbolVisitor;
 import io.crate.metadata.*;
 import io.crate.operation.operator.AndOperator;
 import io.crate.planner.Limits;
@@ -71,7 +69,7 @@ final class RelationNormalizer {
         if (parentQSpec == null) {
             return childQSpec;
         }
-
+        parentQSpec.replace(i -> FieldReplacer.INSTANCE.process(i, childQSpec.outputs()));
         return new QuerySpec()
             .outputs(parentQSpec.outputs())
             .where(mergeWhere(childQSpec.where(), parentQSpec.where()))
@@ -91,6 +89,20 @@ final class RelationNormalizer {
         }
 
         return new WhereClause(AndOperator.join(ImmutableList.of(where2.query(), where1.query())));
+    }
+
+    private static class FieldReplacer extends ReplacingSymbolVisitor<List<Symbol>> {
+
+        final static FieldReplacer INSTANCE = new FieldReplacer();
+
+        public FieldReplacer() {
+            super(ReplaceMode.MUTATE);
+        }
+
+        @Override
+        public Symbol visitField(Field field, List<Symbol> childOutputs) {
+            return childOutputs.get(field.index());
+        }
     }
 
     /**
@@ -139,22 +151,50 @@ final class RelationNormalizer {
         return childHaving.or(parentHaving).orNull();
     }
 
+    /**
+      *  1. where            pushdown if no limit/orderBy on child
+      *                      can be merged into having or, if no aggregations on child, into where
+      *  2. aggregations     pushdown if no limit/orderBy/having on child
+      *  3. having           pushdown if no limit/orderBy/ on child
+      *  4. order by         pushdown if no limit on child or if equal ordering
+      *  5. limit            pushdown if no nothing else left on parent
+      *
+     */
     private static boolean canBeMerged(QuerySpec childQuerySpec, QuerySpec parentQuerySpec) {
         if (parentQuerySpec == null) {
             return true;
         }
+        WhereClause parentWhere = parentQuerySpec.where();
+        boolean childHasLimitOrOrderBy = childQuerySpec.limit().isPresent() || childQuerySpec.orderBy().isPresent();
+        if (!parentWhere.equals(WhereClause.MATCH_ALL) && childHasLimitOrOrderBy) {
+            return false;
+        }
 
-        boolean hasAggregations = (parentQuerySpec.hasAggregates() || parentQuerySpec.groupBy().isPresent()) &&
-                                  (childQuerySpec.hasAggregates() || childQuerySpec.groupBy().isPresent() ||
-                                   childQuerySpec.orderBy().isPresent());
+        boolean parentHasAggregations = parentQuerySpec.hasAggregates() || parentQuerySpec.groupBy().isPresent();
+        boolean childHasAggregations = childQuerySpec.hasAggregates() || childQuerySpec.groupBy().isPresent();
+        if (parentHasAggregations && (childHasLimitOrOrderBy || childHasAggregations)) {
+            return false;
+        }
+        if (parentQuerySpec.having().isPresent() && childHasLimitOrOrderBy) {
+            return false;
+        }
 
-        boolean notMergeableOrderBy = childQuerySpec.orderBy().isPresent() && parentQuerySpec.orderBy().isPresent()
-                                      && !childQuerySpec.orderBy().equals(parentQuerySpec.orderBy())
-                                      && (childQuerySpec.limit().isPresent() || childQuerySpec.offset().isPresent());
+        Optional<OrderBy> optParentOrderBy = parentQuerySpec.orderBy();
+        Optional<OrderBy> optChildOrderBy = childQuerySpec.orderBy();
+        if (optParentOrderBy.isPresent()) {
+            if (childQuerySpec.limit().isPresent()) {
+                if (optChildOrderBy.isPresent()) {
+                    OrderBy childOrder = optChildOrderBy.get();
+                    OrderBy parentOrder = optParentOrderBy.get();
 
-        return !hasAggregations && !notMergeableOrderBy &&
-               (!parentQuerySpec.where().hasQuery() || parentQuerySpec.where() == WhereClause.MATCH_ALL ||
-                !Aggregations.containsAggregation(parentQuerySpec.where().query()));
+                    OrderBy parentResolved = parentOrder.copyAndReplace(
+                        i -> FieldReplacer.INSTANCE.process(i, childQuerySpec.outputs()));
+                    return childOrder.equals(parentResolved);
+                }
+            }
+            return true;
+        }
+        return true;
     }
 
     private static class Context {
@@ -180,90 +220,6 @@ final class RelationNormalizer {
         }
     }
 
-    /**
-     * Function to replace Fields with the Reference from the output of the relation the Field is pointing to.
-     * E.g.
-     *
-     * <pre>
-     * select t.x from (select x from t1) t
-     *         |         |
-     *       Field       \                  ____ Reference that is used as replacement.
-     *          relation: t                /
-     *                    +-- QS.outputs: [x]
-     *                                     ^
-     *                                     |
-     *          index: 0 ------------------+
-     *
-     * </pre>
-     */
-    private static class FieldReferenceResolver extends ReplacingSymbolVisitor<Void>
-        implements com.google.common.base.Function<Symbol, Symbol>{
-
-        public static final FieldReferenceResolver INSTANCE = new FieldReferenceResolver(ReplaceMode.MUTATE);
-        private static final FieldRelationVisitor<Symbol> FIELD_RELATION_VISITOR = new FieldRelationVisitor<>(INSTANCE);
-
-        private FieldReferenceResolver(ReplaceMode mode) {
-            super(mode);
-        }
-
-        @Override
-        public Symbol visitField(Field field, Void context) {
-            Symbol output = FIELD_RELATION_VISITOR.process(field.relation(), field);
-            return output != null ? output : field;
-        }
-
-        @Nullable
-        @Override
-        public Symbol apply(@Nullable Symbol input) {
-            if (input == null) {
-                return null;
-            }
-            return process(input, null);
-        }
-    }
-
-    /**
-     * Visits an output symbol in a queried relation using the provided field index.
-     */
-    private static class FieldRelationVisitor<R> extends AnalyzedRelationVisitor<Field, R> {
-
-        private final SymbolVisitor<?, R> symbolVisitor;
-
-        FieldRelationVisitor(SymbolVisitor<?, R> symbolVisitor) {
-            this.symbolVisitor = symbolVisitor;
-        }
-
-        @Override
-        protected R visitAnalyzedRelation(AnalyzedRelation relation, Field context) {
-            return null;
-        }
-
-        @Override
-        public R visitQueriedTable(QueriedTable relation, Field field) {
-            return visitQueriedRelation(relation, field);
-        }
-
-        @Override
-        public R visitQueriedDocTable(QueriedDocTable relation, Field field) {
-            return visitQueriedRelation(relation, field);
-        }
-
-        @Override
-        public R visitMultiSourceSelect(MultiSourceSelect relation, Field field) {
-            return visitQueriedRelation(relation, field);
-        }
-
-        @Override
-        public R visitQueriedSelectRelation(QueriedSelectRelation relation, Field field) {
-            return visitQueriedRelation(relation, field);
-        }
-
-        private R visitQueriedRelation(QueriedRelation relation, Field field) {
-            Symbol output = relation.querySpec().outputs().get(field.index());
-            return symbolVisitor.process(output, null);
-        }
-    }
-
     private static class SubselectRewriter extends AnalyzedRelationVisitor<RelationNormalizer.Context, AnalyzedRelation> {
 
         private static final SubselectRewriter SUBSELECT_REWRITER = new SubselectRewriter();
@@ -283,13 +239,14 @@ final class RelationNormalizer {
         @Override
         public AnalyzedRelation visitQueriedSelectRelation(QueriedSelectRelation relation, Context context) {
             QuerySpec querySpec = relation.querySpec();
+
             // Try to merge with parent query spec
             if (canBeMerged(querySpec, context.currentParentQSpec)) {
                 querySpec = mergeQuerySpec(querySpec, context.currentParentQSpec);
             }
 
             // Try to push down to the child
-            context.currentParentQSpec = querySpec.copyAndReplace(i -> i);
+            context.currentParentQSpec = querySpec;
             AnalyzedRelation processedChildRelation = process(relation.subRelation(), context);
 
             // If cannot be pushed down replace qSpec with possibly merged qSpec from context
@@ -307,7 +264,6 @@ final class RelationNormalizer {
                 return table;
             }
             QuerySpec querySpec = table.querySpec();
-            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             if (!canBeMerged(querySpec, context.currentParentQSpec)) {
                 return null;
             }
@@ -322,7 +278,6 @@ final class RelationNormalizer {
                 return table;
             }
             QuerySpec querySpec = table.querySpec();
-            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             if (!canBeMerged(querySpec, context.currentParentQSpec)) {
                 return null;
             }
@@ -336,7 +291,6 @@ final class RelationNormalizer {
             if (context.currentParentQSpec == null) {
                 return multiSourceSelect;
             }
-            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             QuerySpec querySpec = multiSourceSelect.querySpec();
             if (!canBeMerged(querySpec, context.currentParentQSpec)) {
                 return null;

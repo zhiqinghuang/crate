@@ -48,7 +48,7 @@ public class RelationPrinter extends AnalyzedRelationVisitor<Void, String> {
 
     @Override
     public String visitQueriedDocTable(QueriedDocTable table, Void context) {
-        return table.tableRelation().tableInfo().ident().sqlFqn();
+        return "QT{" + table.tableRelation().tableInfo().ident().sqlFqn() + "}";
     }
 
     @Override

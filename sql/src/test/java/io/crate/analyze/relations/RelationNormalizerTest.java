@@ -81,9 +81,9 @@ public class RelationNormalizerTest extends CrateUnitTest {
         assertThat(relation, instanceOf(QueriedSelectRelation.class));
         QueriedSelectRelation outerRelation = (QueriedSelectRelation) relation;
         assertThat(outerRelation.querySpec(),
-            isSQL("SELECT io.crate.analyze.QueriedSelectRelation.a, " +
-                  "io.crate.analyze.QueriedSelectRelation.x, " +
-                  "io.crate.analyze.QueriedSelectRelation.i ORDER BY io.crate.analyze.QueriedSelectRelation.x"));
+            isSQL("SELECT QT{doc.t1}.a, " +
+                  "QT{doc.t1}.x, " +
+                  "QT{doc.t1}.i ORDER BY QT{doc.t1}.x"));
         assertThat(outerRelation.subRelation(), instanceOf(QueriedDocTable.class));
         assertThat(outerRelation.subRelation().querySpec(),
             isSQL("SELECT doc.t1.a, doc.t1.x, doc.t1.i ORDER BY doc.t1.a LIMIT 10"));
@@ -111,10 +111,10 @@ public class RelationNormalizerTest extends CrateUnitTest {
         assertThat(relation, instanceOf(QueriedSelectRelation.class));
         QueriedSelectRelation outerRelation = (QueriedSelectRelation) relation;
         assertThat(outerRelation.querySpec(),
-            isSQL("SELECT io.crate.analyze.QueriedSelectRelation.a, " +
-                  "io.crate.analyze.QueriedSelectRelation.x, " +
-                  "io.crate.analyze.QueriedSelectRelation.i " +
-                  "ORDER BY io.crate.analyze.QueriedSelectRelation.a DESC LIMIT 5"));
+            isSQL("SELECT QT{doc.t1}.a, " +
+                  "QT{doc.t1}.x, " +
+                  "QT{doc.t1}.i " +
+                  "ORDER BY QT{doc.t1}.a DESC LIMIT 5"));
         assertThat(outerRelation.subRelation(), instanceOf(QueriedDocTable.class));
         assertThat(outerRelation.subRelation().querySpec(),
             isSQL("SELECT doc.t1.a, doc.t1.x, doc.t1.i ORDER BY doc.t1.a LIMIT 10 OFFSET 5"));
