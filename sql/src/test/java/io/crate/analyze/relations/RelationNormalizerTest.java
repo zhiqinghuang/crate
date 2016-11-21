@@ -187,12 +187,22 @@ public class RelationNormalizerTest extends CrateUnitTest {
     }
 
     @Test
-    public void testFilterOnAggregatedField() throws Exception {
+    public void testFilterOnAggregatedField3Levels() throws Exception {
         QueriedRelation relation = normalize(
             "select ii, xx from ( " +
             "  select i + i as ii, xx from (" +
             "    select i, sum(x) as xx from t1 group by i) as t) as tt " +
             "where (ii * 2) > 4 and (xx * 2) > 120");
+        assertThat(relation, instanceOf(QueriedSelectRelation.class));
+    }
+
+    @Test
+    public void testFilterOnAggregatedField2Levels() throws Exception {
+        QueriedRelation relation = normalize(
+            "select i + i as ii, xx from ( " +
+            "   select i, sum(x) as xx from t1 group by i " +
+            ") as t " +
+            "where ((i + i) * 2) > 4 and (xx * 2) > 120");
         assertThat(relation, instanceOf(QueriedSelectRelation.class));
     }
 

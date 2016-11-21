@@ -160,14 +160,28 @@ final class RelationNormalizer {
 
         boolean parentHasAggregations = parentQuerySpec.hasAggregates() || parentQuerySpec.groupBy().isPresent();
         boolean childHasAggregations = childQuerySpec.hasAggregates() || childQuerySpec.groupBy().isPresent();
+        if (parentHasWhere && childHasAggregations) {
+            if (parentWhere.hasQuery()) {
+                Symbol whereQuery = FieldReferenceResolver.INSTANCE.apply(parentWhere.query());
+                if (Aggregations.containsAggregation(whereQuery)) {
+                    return false;
+                }
+                // where operates on group by, merge is possible
+            } else {
+                return false;
+            }
+        }
         if (parentHasAggregations && (childHasLimit || childHasAggregations)) {
             return false;
         }
 
         Optional<OrderBy> childOrderBy = childQuerySpec.orderBy();
         Optional<OrderBy> parentOrderBy = parentQuerySpec.orderBy();
-        if (childHasLimit && childOrderBy.isPresent() && parentOrderBy.isPresent() && !childOrderBy.equals(parentOrderBy)) {
-            return false;
+        if (childHasLimit && childOrderBy.isPresent() && parentOrderBy.isPresent()) {
+            OrderBy fieldResolvedParentOrderBy = parentOrderBy.get().copyAndReplace(FieldReferenceResolver.INSTANCE);
+            if (!childOrderBy.get().equals(fieldResolvedParentOrderBy)) {
+                return false;
+            }
         }
         if (parentHasWhere && parentWhere.hasQuery() && Aggregations.containsAggregation(parentWhere.query())) {
             return false;
@@ -307,7 +321,7 @@ final class RelationNormalizer {
             }
 
             // Try to push down to the child
-            context.currentParentQSpec = querySpec.copyAndReplace(i -> i);
+            context.currentParentQSpec = querySpec;
             AnalyzedRelation processedChildRelation = process(relation.subRelation(), context);
 
             // If cannot be pushed down replace qSpec with possibly merged qSpec from context
@@ -325,11 +339,11 @@ final class RelationNormalizer {
                 return table;
             }
             QuerySpec querySpec = table.querySpec();
-            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             if (!canBeMerged(querySpec, context.currentParentQSpec)) {
                 return null;
             }
 
+            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             querySpec = mergeQuerySpec(querySpec, context.currentParentQSpec);
             return new QueriedTable(table.tableRelation(), context.paths(), querySpec);
         }
@@ -340,11 +354,11 @@ final class RelationNormalizer {
                 return table;
             }
             QuerySpec querySpec = table.querySpec();
-            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             if (!canBeMerged(querySpec, context.currentParentQSpec)) {
                 return null;
             }
 
+            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             querySpec = mergeQuerySpec(querySpec, context.currentParentQSpec);
             return new QueriedDocTable(table.tableRelation(), context.paths(), querySpec);
         }
@@ -354,12 +368,12 @@ final class RelationNormalizer {
             if (context.currentParentQSpec == null) {
                 return multiSourceSelect;
             }
-            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             QuerySpec querySpec = multiSourceSelect.querySpec();
             if (!canBeMerged(querySpec, context.currentParentQSpec)) {
                 return null;
             }
 
+            context.currentParentQSpec.replace(FieldReferenceResolver.INSTANCE);
             querySpec = mergeQuerySpec(querySpec, context.currentParentQSpec);
             // must create a new MultiSourceSelect because paths and query spec changed
             return new MultiSourceSelect(mapSourceRelations(multiSourceSelect),
