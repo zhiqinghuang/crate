@@ -124,12 +124,22 @@ class DocTableInfoBuilder {
 
     private DocIndexMetaData buildDocIndexMetaData(Index index) {
         DocIndexMetaData docIndexMetaData;
+        IndexMetaData indexMetaData = metaData.index(index);
         try {
-            docIndexMetaData = new DocIndexMetaData(functions, metaData.index(index), ident);
+            docIndexMetaData = new DocIndexMetaData(functions, indexMetaData, ident);
         } catch (IOException e) {
             throw new UnhandledServerException("Unable to build DocIndexMetaData", e);
         }
-        return docIndexMetaData.build();
+        try {
+            return docIndexMetaData.build();
+        } catch (Exception e) {
+            try {
+                logger.error("Could not build DocIndexMetaData from: {}",
+                    indexMetaData.mapping("default").getSourceAsMap());
+            } catch (IOException e1) {
+            }
+            throw e;
+        }
     }
 
     private DocIndexMetaData buildDocIndexMetaDataFromTemplate(String index, String templateName) {

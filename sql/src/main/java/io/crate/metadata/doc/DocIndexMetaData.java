@@ -46,6 +46,7 @@ import org.elasticsearch.action.admin.indices.template.put.PutIndexTemplateReque
 import org.elasticsearch.action.admin.indices.template.put.TransportPutIndexTemplateAction;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.metadata.MappingMetaData;
+import org.elasticsearch.common.Booleans;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentHelper;
@@ -255,9 +256,16 @@ public class DocIndexMetaData {
     }
 
     private Reference.IndexType getColumnIndexType(Map<String, Object> columnProperties) {
-        String indexType = (String) columnProperties.get("index");
+        Object index = columnProperties.get("index");
+        Boolean hasIndex = false;
+        if (index instanceof String) {
+            hasIndex = Booleans.parseBoolean((String) index, false);
+        } else if (index instanceof Boolean){
+            hasIndex = (Boolean) index;
+        }
         String analyzerName = (String) columnProperties.get("analyzer");
-        if (indexType != null) {
+        if (hasIndex) {
+            String indexType = (String) index;
             if (indexType.equals(Reference.IndexType.NOT_ANALYZED.toString())) {
                 return Reference.IndexType.NOT_ANALYZED;
             } else if (indexType.equals(Reference.IndexType.NO.toString())) {

@@ -89,7 +89,7 @@ public class DocIndexMetaDataTest extends CrateUnitTest {
 
     @Before
     public void before() throws Exception {
-        threadPool = new TestThreadPool("testing");
+        threadPool = new TestThreadPool(getClass().getName());
         functions = getFunctions();
     }
 
@@ -903,7 +903,9 @@ public class DocIndexMetaDataTest extends CrateUnitTest {
                 new DocSchemaInfoFactory(docTableInfoFactory)),
             new FulltextAnalyzerResolver(clusterService,
                 new AnalysisRegistry(
-                    new Environment(Settings.EMPTY),
+                    new Environment(Settings.builder()
+                        .put(Environment.PATH_HOME_SETTING.getKey(), createTempDir().toString())
+                        .build()),
                     Collections.emptyMap(),
                     Collections.emptyMap(),
                     Collections.emptyMap(),
