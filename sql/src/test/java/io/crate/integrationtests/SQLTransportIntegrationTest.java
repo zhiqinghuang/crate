@@ -67,6 +67,7 @@ import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.util.concurrent.ConcurrentMapLong;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.index.IndexService;
@@ -75,6 +76,7 @@ import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.transport.TransportService;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Rule;
@@ -164,6 +166,11 @@ public abstract class SQLTransportIntegrationTest extends ESIntegTestCase {
     }
 
     @After
+    public void afterAsserts() throws Exception {
+        assertNoJobExecutionContextAreLeftOpen();
+        assertNoTransportRequest();
+    }
+
     public void assertNoJobExecutionContextAreLeftOpen() throws Exception {
         final Field activeContexts = JobContextService.class.getDeclaredField("activeContexts");
         final Field activeOperationsSb = TransportShardAction.class.getDeclaredField("activeOperations");
@@ -223,6 +230,30 @@ public abstract class SQLTransportIntegrationTest extends ESIntegTestCase {
                 }
             }
             throw new AssertionError(errorMessageBuilder.toString(), e);
+        }
+    }
+
+
+    public void assertNoTransportRequest() throws Exception {
+        final Field clientHandlers = TransportService.class.getDeclaredField("clientHandlers");
+        clientHandlers.setAccessible(true);
+
+        try {
+            assertBusy(() -> {
+                for (TransportService transportService : internalCluster().getInstances(TransportService.class)) {
+                    try {
+                        //noinspection unchecked
+                        ConcurrentMapLong clientHandlerMap = (ConcurrentMapLong) clientHandlers.get(transportService);
+                        assertThat("No transport requests should exist anymore. Expected 0 but got " + clientHandlerMap.size(),
+                            clientHandlerMap.size(), is(0));
+                    } catch (IllegalAccessException e) {
+                        throw Throwables.propagate(e);
+                    }
+                }
+            }, 10L, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            logger.error("Could not assert transport requests count within timeout", e);
+            fail("Could not assert transport requests count within timeout");
         }
     }
 
