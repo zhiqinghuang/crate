@@ -52,9 +52,7 @@ import io.crate.planner.consumer.OrderByPositionVisitor;
 import io.crate.planner.node.dql.CollectPhase;
 import io.crate.planner.node.dql.RoutedCollectPhase;
 import io.crate.planner.projection.Projections;
-import io.crate.plugin.IndexEventListenerProxy;
-import org.elasticsearch.action.bulk.BulkRetryCoordinatorPool;
-import org.elasticsearch.cluster.metadata.IndexMetaData;
+import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
@@ -68,7 +66,11 @@ import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.IndexService;
-import org.elasticsearch.index.shard.*;
+import org.elasticsearch.index.shard.IllegalIndexShardStateException;
+import org.elasticsearch.index.shard.IndexShard;
+import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.index.shard.ShardNotFoundException;
+import org.elasticsearch.indices.IndicesLifecycle;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.threadpool.ThreadPool;
 
@@ -138,7 +140,6 @@ public class ShardCollectSource extends AbstractComponent implements CollectSour
     private final ClusterService clusterService;
     private final ThreadPool threadPool;
     private final TransportActionProvider transportActionProvider;
-    private final BulkRetryCoordinatorPool bulkRetryCoordinatorPool;
     private final RemoteCollectorFactory remoteCollectorFactory;
     private final SystemCollectSource systemCollectSource;
     private final Executor executor;
@@ -161,7 +162,6 @@ public class ShardCollectSource extends AbstractComponent implements CollectSour
                               LuceneQueryBuilder luceneQueryBuilder,
                               ThreadPool threadPool,
                               TransportActionProvider transportActionProvider,
-                              BulkRetryCoordinatorPool bulkRetryCoordinatorPool,
                               RemoteCollectorFactory remoteCollectorFactory,
                               SystemCollectSource systemCollectSource,
                               NodeSysExpression nodeSysExpression,
@@ -175,7 +175,6 @@ public class ShardCollectSource extends AbstractComponent implements CollectSour
         this.clusterService = clusterService;
         this.threadPool = threadPool;
         this.transportActionProvider = transportActionProvider;
-        this.bulkRetryCoordinatorPool = bulkRetryCoordinatorPool;
         this.remoteCollectorFactory = remoteCollectorFactory;
         this.systemCollectSource = systemCollectSource;
         this.executor = new DirectFallbackExecutor(threadPool.executor(ThreadPool.Names.SEARCH));
@@ -196,7 +195,6 @@ public class ShardCollectSource extends AbstractComponent implements CollectSour
             threadPool,
             settings,
             transportActionProvider,
-            bulkRetryCoordinatorPool,
             new InputFactory(functions),
             nodeNormalizer,
             systemCollectSource::getRowUpdater
@@ -238,11 +236,11 @@ public class ShardCollectSource extends AbstractComponent implements CollectSour
             if (isBlobIndex(indexShard.shardId().getIndexName())) {
                 BlobShard blobShard = blobIndicesService.blobShardSafe(indexShard.shardId());
                 provider = new BlobShardCollectorProvider(blobShard, clusterService, functions,
-                    indexNameExpressionResolver, threadPool, settings, transportActionProvider, bulkRetryCoordinatorPool);
+                    indexNameExpressionResolver, threadPool, settings, transportActionProvider);
             } else {
                 provider = new LuceneShardCollectorProvider(
                     schemas, luceneQueryBuilder, clusterService, functions, indexNameExpressionResolver, threadPool,
-                    settings, transportActionProvider, bulkRetryCoordinatorPool, indexShard);
+                    settings, transportActionProvider, indexShard);
             }
             shards.put(indexShard.shardId(), provider);
 

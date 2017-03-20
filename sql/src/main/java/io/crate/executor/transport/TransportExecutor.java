@@ -59,7 +59,7 @@ import io.crate.planner.node.management.GenericShowPlan;
 import io.crate.planner.node.management.KillPlan;
 import io.crate.planner.statement.SetSessionPlan;
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.action.bulk.BulkRetryCoordinatorPool;
+import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.inject.Inject;
@@ -80,6 +80,7 @@ public class TransportExecutor implements Executor {
     private static final Logger LOGGER = Loggers.getLogger(TransportExecutor.class);
 
     private final IndexNameExpressionResolver indexNameExpressionResolver;
+    private final ThreadPool threadPool;
     private final Functions functions;
     private final TaskCollectingVisitor plan2TaskVisitor;
     private DDLStatementDispatcher ddlAnalysisDispatcherProvider;
@@ -90,7 +91,6 @@ public class TransportExecutor implements Executor {
     private final ContextPreparer contextPreparer;
     private final TransportActionProvider transportActionProvider;
     private final IndicesService indicesService;
-    private final BulkRetryCoordinatorPool bulkRetryCoordinatorPool;
 
     private final ProjectionToProjectorVisitor globalProjectionToProjectionVisitor;
     private final MultiPhaseExecutor multiPhaseExecutor = new MultiPhaseExecutor();
@@ -110,18 +110,17 @@ public class TransportExecutor implements Executor {
                              ShowStatementDispatcher showStatementDispatcherProvider,
                              ClusterService clusterService,
                              IndicesService indicesService,
-                             BulkRetryCoordinatorPool bulkRetryCoordinatorPool,
                              SystemCollectSource systemCollectSource) {
         this.jobContextService = jobContextService;
         this.contextPreparer = contextPreparer;
         this.transportActionProvider = transportActionProvider;
         this.indexNameExpressionResolver = indexNameExpressionResolver;
+        this.threadPool = threadPool;
         this.functions = functions;
         this.ddlAnalysisDispatcherProvider = ddlAnalysisDispatcherProvider;
         this.showStatementDispatcherProvider = showStatementDispatcherProvider;
         this.clusterService = clusterService;
         this.indicesService = indicesService;
-        this.bulkRetryCoordinatorPool = bulkRetryCoordinatorPool;
         plan2TaskVisitor = new TaskCollectingVisitor();
         EvaluatingNormalizer normalizer = EvaluatingNormalizer.functionOnlyNormalizer(functions, ReplaceMode.COPY);
         globalProjectionToProjectionVisitor = new ProjectionToProjectorVisitor(
@@ -131,7 +130,6 @@ public class TransportExecutor implements Executor {
             threadPool,
             settings,
             transportActionProvider,
-            bulkRetryCoordinatorPool,
             new InputFactory(functions),
             normalizer,
             systemCollectSource::getRowUpdater
@@ -246,13 +244,11 @@ public class TransportExecutor implements Executor {
             return new UpsertByIdTask(
                 plan,
                 clusterService,
+                threadPool.scheduler(),
                 indexNameExpressionResolver,
                 clusterService.state().metaData().settings(),
                 transportActionProvider.transportShardUpsertAction()::execute,
-                transportActionProvider.transportCreateIndexAction(),
-                transportActionProvider.transportBulkCreateIndicesAction(),
-                bulkRetryCoordinatorPool,
-                jobContextService);
+                transportActionProvider.transportBulkCreateIndicesAction());
         }
 
         @Override
