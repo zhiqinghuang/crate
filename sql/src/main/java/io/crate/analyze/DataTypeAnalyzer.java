@@ -21,10 +21,7 @@
 
 package io.crate.analyze;
 
-import io.crate.sql.tree.CollectionColumnType;
-import io.crate.sql.tree.ColumnType;
-import io.crate.sql.tree.DefaultTraversalVisitor;
-import io.crate.sql.tree.ObjectColumnType;
+import io.crate.sql.tree.*;
 import io.crate.types.ArrayType;
 import io.crate.types.DataType;
 import io.crate.types.DataTypes;
@@ -33,7 +30,13 @@ import java.util.Locale;
 
 public class DataTypeAnalyzer extends DefaultTraversalVisitor<DataType, Void> {
 
-    public final static DataTypeAnalyzer INSTANCE = new DataTypeAnalyzer();
+    private DataTypeAnalyzer() {}
+
+    private final static DataTypeAnalyzer INSTANCE = new DataTypeAnalyzer();
+
+    public static DataType convert(Expression expression) {
+        return INSTANCE.process(expression, null);
+    }
 
     @Override
     public DataType visitColumnType(ColumnType node, Void context) {

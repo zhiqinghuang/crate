@@ -28,6 +28,7 @@ package io.crate.analyze;
 
 import io.crate.metadata.Schemas;
 import io.crate.sql.tree.CreateFunction;
+import org.elasticsearch.common.Nullable;
 
 import java.util.List;
 
@@ -39,22 +40,19 @@ public class CreateFunctionAnalyzer {
         List<String> parts = node.name().getParts();
 
         return new CreateFunctionAnalyzedStatement(
-            resolveSchemaName(parts, context),
+            resolveSchemaName(parts, context.sessionContext().defaultSchema()),
             resolveFunctionName(parts),
             node.replace(),
             toFunctionArgumentDefinitions(node.arguments()),
-            DataTypeAnalyzer.INSTANCE.process(node.returnType(), null),
+            DataTypeAnalyzer.convert(node.returnType()),
             node.language(),
             node.definition()
         );
     }
 
-    private static String resolveSchemaName(List<String> parts, Analysis context) {
+    private static String resolveSchemaName(List<String> parts, @Nullable String schema) {
         if (parts.size() == 1) {
-            if (context.sessionContext().defaultSchema() != null) {
-                return context.sessionContext().defaultSchema();
-            }
-            return Schemas.DEFAULT_SCHEMA_NAME;
+            return schema != null ? schema : Schemas.DEFAULT_SCHEMA_NAME;
         } else {
             return parts.get(0);
         }

@@ -76,7 +76,7 @@ public class FunctionArgumentDefinition implements Streamable, ToXContent {
         return arguments.stream()
             .map(arg -> FunctionArgumentDefinition.of(
                 arg.name().orElse(null),
-                DataTypeAnalyzer.INSTANCE.process(arg.type(), null)))
+                DataTypeAnalyzer.convert(arg.type())))
             .collect(Collectors.toList());
     }
 

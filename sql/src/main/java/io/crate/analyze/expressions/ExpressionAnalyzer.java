@@ -358,13 +358,13 @@ public class ExpressionAnalyzer {
 
         @Override
         protected Symbol visitCast(Cast node, ExpressionAnalysisContext context) {
-            DataType returnType = DataTypeAnalyzer.INSTANCE.process(node.getType(), null);
+            DataType returnType = DataTypeAnalyzer.convert(node.getType());
             return cast(process(node.getExpression(), context), returnType, false);
         }
 
         @Override
         protected Symbol visitTryCast(TryCast node, ExpressionAnalysisContext context) {
-            DataType returnType = DataTypeAnalyzer.INSTANCE.process(node.getType(), null);
+            DataType returnType = DataTypeAnalyzer.convert(node.getType());
 
             if (CastFunctionResolver.supportsExplicitConversion(returnType)) {
                 try {
