@@ -132,10 +132,10 @@ public class UserDefinedFunctionService extends AbstractComponent implements Clu
 
     static class RegisterUserDefinedFunctionRequest extends ClusterStateUpdateRequest<RegisterUserDefinedFunctionRequest> {
 
-        UserDefinedFunctionMetaData metaData;
-        final String cause;
-        final String name;
-        final boolean replace;
+        private final UserDefinedFunctionMetaData metaData;
+        private final String cause;
+        private final String name;
+        private final boolean replace;
 
         RegisterUserDefinedFunctionRequest(String cause, String name, UserDefinedFunctionMetaData metaData, boolean replace) {
             this.cause = cause;

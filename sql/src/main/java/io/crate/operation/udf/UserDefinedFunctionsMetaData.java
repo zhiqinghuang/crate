@@ -47,18 +47,18 @@ public class UserDefinedFunctionsMetaData extends AbstractDiffable<MetaData.Cust
         MetaData.registerPrototype(TYPE, PROTO);
     }
 
-    private final Map<Integer, UserDefinedFunctionMetaData> functions;
+    private final Map<Integer, UserDefinedFunctionMetaData> functionsBySignatureHash;
 
     private UserDefinedFunctionsMetaData() {
-        this.functions = new HashMap<>();
+        this.functionsBySignatureHash = new HashMap<>();
     }
 
     private UserDefinedFunctionsMetaData(Map<Integer, UserDefinedFunctionMetaData> functions) {
-        this.functions = functions;
+        this.functionsBySignatureHash = functions;
     }
 
     public static UserDefinedFunctionsMetaData newInstance(UserDefinedFunctionsMetaData instance) {
-        return new UserDefinedFunctionsMetaData(new HashMap<>(instance.functions));
+        return new UserDefinedFunctionsMetaData(new HashMap<>(instance.functionsBySignatureHash));
     }
 
     static UserDefinedFunctionsMetaData of(UserDefinedFunctionMetaData... functions) {
@@ -70,21 +70,21 @@ public class UserDefinedFunctionsMetaData extends AbstractDiffable<MetaData.Cust
     }
 
     public void put(UserDefinedFunctionMetaData function) {
-        functions.put(function.createMethodSignature(), function);
+        functionsBySignatureHash.put(function.createMethodSignature(), function);
     }
 
     public boolean contains(UserDefinedFunctionMetaData function) {
-        return functions.containsKey(function.createMethodSignature());
+        return functionsBySignatureHash.containsKey(function.createMethodSignature());
     }
 
     public Collection<UserDefinedFunctionMetaData> functionsMetaData() {
-        return functions.values();
+        return functionsBySignatureHash.values();
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeVInt(functions.size());
-        for (UserDefinedFunctionMetaData function : functions.values()) {
+        out.writeVInt(functionsBySignatureHash.size());
+        for (UserDefinedFunctionMetaData function : functionsBySignatureHash.values()) {
             function.writeTo(out);
         }
     }
@@ -103,7 +103,7 @@ public class UserDefinedFunctionsMetaData extends AbstractDiffable<MetaData.Cust
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startArray("functions");
-        for (UserDefinedFunctionMetaData function : functions.values()) {
+        for (UserDefinedFunctionMetaData function : functionsBySignatureHash.values()) {
             function.toXContent(builder, params);
         }
         builder.endArray();
@@ -138,6 +138,6 @@ public class UserDefinedFunctionsMetaData extends AbstractDiffable<MetaData.Cust
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         UserDefinedFunctionsMetaData that = (UserDefinedFunctionsMetaData) o;
-        return functions.equals(that.functions);
+        return functionsBySignatureHash.equals(that.functionsBySignatureHash);
     }
 }

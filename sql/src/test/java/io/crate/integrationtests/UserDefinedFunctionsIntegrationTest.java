@@ -39,7 +39,7 @@ import static org.hamcrest.CoreMatchers.is;
 @ESIntegTestCase.ClusterScope(numDataNodes = 2, numClientNodes = 0, randomDynamicTemplates = false)
 public class UserDefinedFunctionsIntegrationTest extends SQLTransportIntegrationTest {
 
-    private final Object[][] rows = new Object[][]{
+    private Object[][] rows = new Object[][]{
         new Object[]{1L, "Foo", new HashMap<String, Long>() {{
             put("foo", 2L);
         }}, new Object[]{1L, 2L}
@@ -61,17 +61,6 @@ public class UserDefinedFunctionsIntegrationTest extends SQLTransportIntegration
     }
 
     @Test
-    public void testCreateFunctionWithObjectInputType() throws Exception {
-        execute("create function test(object)" +
-            " returns long language javascript as 'function test(x) { return x.foo; }'");
-        waitForFunctionCreatedOnAll("doc", "test", ImmutableList.of(DataTypes.OBJECT));
-
-        execute("select test(obj) from test where id = 1");
-        assertThat(response.rowCount(), is(1L));
-        assertThat(response.rows()[0][0], is(2L));
-    }
-
-    @Test
     public void testCreateOverloadedFunction() throws Exception {
         execute("create function foo(object)" +
             " returns string language javascript as 'function foo(x) { return \"1\"; }'");
@@ -84,31 +73,5 @@ public class UserDefinedFunctionsIntegrationTest extends SQLTransportIntegration
         execute("select foo(str) from test where id = 2");
         assertThat(response.rowCount(), is(1L));
         assertThat(response.rows()[0][0], is("bar"));
-    }
-
-    @Test
-    public void testCreateFunctionInCustomSchema() throws Exception {
-        execute("create function test.custom_function(string)" +
-            " returns string language javascript as 'function custom_function(x) { return x; }'");
-        waitForFunctionCreatedOnAll("test", "custom_function", ImmutableList.of(DataTypes.STRING));
-
-        execute("select test.custom_function(str) from test where id = 2");
-        assertThat(response.rowCount(), is(1L));
-        assertThat(response.rows()[0][0], is("bar"));
-    }
-
-    @Test
-    public void testCreateFunctionInDefaultSchemaWithSameNameAsBuiltinFunction() throws Exception {
-        execute("create function lower(string) returns string language javascript as 'function lower(x) { return x; }'");
-        waitForFunctionCreatedOnAll("doc", "lower", ImmutableList.of(DataTypes.STRING));
-
-        execute("select lower(str) from test where id = 1");
-        assertThat(response.rowCount(), is(1L));
-        assertThat(response.rows()[0][0], is("foo"));
-
-        // can be accessed only via schema name
-        execute("select doc.lower(str) from test where id = 1");
-        assertThat(response.rowCount(), is(1L));
-        assertThat(response.rows()[0][0], is("Foo"));
     }
 }

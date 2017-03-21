@@ -84,6 +84,6 @@ public class MaximumAggregationTest extends AggregationTest {
 
     @Test(expected = NullPointerException.class)
     public void testUnsupportedType() throws Exception {
-        executeAggregation(DataTypes.OBJECT, new Object[][]{{new Object()}});
+        Object[][] result = executeAggregation(DataTypes.STRING, new Object[][]{{"Youri"}, {"Ruben"}});
     }
 }
