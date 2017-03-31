@@ -342,7 +342,7 @@ public class ESGetTask extends JobTask {
     public static String indexName(DocTableInfo tableInfo, @Nullable List<BytesRef> values) {
         if (tableInfo.isPartitioned()) {
             assert values != null : "values must not be null";
-            return new PartitionName(tableInfo.ident(), values).asIndexName();
+            return PartitionName.indexName(tableInfo.ident(), PartitionName.encodeIdent(values));
         } else {
             return tableInfo.ident().indexName();
         }

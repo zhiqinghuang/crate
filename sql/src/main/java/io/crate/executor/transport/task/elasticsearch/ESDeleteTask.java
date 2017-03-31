@@ -22,148 +22,131 @@
 package io.crate.executor.transport.task.elasticsearch;
 
 import io.crate.Constants;
+import io.crate.action.FutureActionListener;
 import io.crate.analyze.where.DocKeys;
 import io.crate.concurrent.CompletableFutures;
 import io.crate.data.BatchConsumer;
 import io.crate.data.Row;
 import io.crate.data.Row1;
 import io.crate.data.RowsBatchIterator;
+import io.crate.exceptions.Exceptions;
 import io.crate.exceptions.SQLExceptions;
+import io.crate.executor.Executor;
 import io.crate.executor.JobTask;
-import io.crate.jobs.ESJobContext;
-import io.crate.jobs.JobContextService;
-import io.crate.jobs.JobExecutionContext;
+import io.crate.metadata.doc.DocTableInfo;
 import io.crate.planner.node.dml.ESDelete;
-import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.delete.TransportDeleteAction;
-import org.elasticsearch.action.support.TransportAction;
 import org.elasticsearch.index.engine.VersionConflictEngineException;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public class ESDeleteTask extends JobTask {
 
-    protected final List<CompletableFuture<Long>> results;
+    private final TransportDeleteAction deleteAction;
     private final ESDelete esDelete;
-    private final JobContextService jobContextService;
-    protected JobExecutionContext.Builder builder;
 
-    public ESDeleteTask(ESDelete esDelete,
-                        TransportDeleteAction transport,
-                        JobContextService jobContextService) {
+    public ESDeleteTask(ESDelete esDelete, TransportDeleteAction deleteAction) {
         super(esDelete.jobId());
         this.esDelete = esDelete;
-        this.jobContextService = jobContextService;
-
-        results = new ArrayList<>(esDelete.getBulkSize());
-        for (int i = 0; i < esDelete.getBulkSize(); i++) {
-            CompletableFuture<Long> result = new CompletableFuture<>();
-            results.add(result);
-        }
-
-        List<DeleteRequest> requests = new ArrayList<>(esDelete.docKeys().size());
-        List<ActionListener> listeners = new ArrayList<>(esDelete.docKeys().size());
-        int resultIdx = 0;
-        for (DocKeys.DocKey docKey : esDelete.docKeys()) {
-            DeleteRequest request = new DeleteRequest(
-                ESGetTask.indexName(esDelete.tableInfo(), docKey.partitionValues().orNull()),
-                Constants.DEFAULT_MAPPING_TYPE, docKey.id());
-            request.routing(docKey.routing());
-            if (docKey.version().isPresent()) {
-                //noinspection OptionalGetWithoutIsPresent
-                request.version(docKey.version().get());
-            }
-            requests.add(request);
-            CompletableFuture<Long> result = results.get(esDelete.getItemToBulkIdx().get(resultIdx));
-            listeners.add(new DeleteResponseListener(result));
-            resultIdx++;
-        }
-
-        for (int i = 0; i < results.size(); i++) {
-            if (!esDelete.getItemToBulkIdx().values().contains(i)) {
-                results.get(i).complete(0L);
-            }
-        }
-        createContextBuilder("delete", requests, listeners, transport);
-    }
-
-    private void createContextBuilder(String operationName,
-                                      List<? extends ActionRequest> requests,
-                                      List<? extends ActionListener> listeners,
-                                      TransportAction transportAction) {
-        ESJobContext esJobContext = new ESJobContext(esDelete.executionPhaseId(), operationName,
-            requests, listeners, results, transportAction);
-        builder = jobContextService.newBuilder(jobId());
-        builder.addSubContext(esJobContext);
-    }
-
-    private void startContext() throws Throwable {
-        assert builder != null : "Context must be created first";
-        JobExecutionContext ctx = jobContextService.createContext(builder);
-        ctx.start();
+        this.deleteAction = deleteAction;
     }
 
     @Override
     public void execute(final BatchConsumer consumer, Row parameters) {
-        CompletableFuture<Long> result = results.get(0);
-        try {
-            startContext();
-        } catch (Throwable throwable) {
-            consumer.accept(null, throwable);
-            return;
-        }
-        result.whenComplete((Long futureResult, Throwable t) -> {
+        List<CompletableFuture<Long>> futures = createAndSendRequests();
+        CompletableFutures.allAsList(futures).whenComplete((r, t) -> {
             if (t == null) {
-                consumer.accept(RowsBatchIterator.newInstance(new Row1(futureResult)), null);
+                consumer.accept(RowsBatchIterator.newInstance(new Row1(sumRowCount(r))), null);
             } else {
                 consumer.accept(null, t);
             }
         });
     }
 
-
-    private static class DeleteResponseListener implements ActionListener<DeleteResponse> {
-
-        private final CompletableFuture<Long> result;
-
-        DeleteResponseListener(CompletableFuture<Long> result) {
-            this.result = result;
+    private List<CompletableFuture<Long>> createAndSendRequests() {
+        List<CompletableFuture<Long>> futures = new ArrayList<>(esDelete.docKeys().size());
+        for (DocKeys.DocKey docKey : esDelete.docKeys()) {
+            DeleteRequest deleteRequest = deleteRequestFromDocKey(esDelete.tableInfo(), docKey);
+            FutureActionListener<DeleteResponse, Long> listener = new FutureActionListener<>(r -> {
+                if (r.isFound()) {
+                    return 1L;
+                }
+                return 0L;
+            });
+            deleteAction.execute(deleteRequest, listener);
+            futures.add(listener.exceptionally(ESDeleteTask::treatVersionConflictAsNoMatch));
         }
+        return futures;
+    }
 
-        @Override
-        public void onResponse(DeleteResponse response) {
-            if (!response.isFound()) {
-                result.complete(0L);
-            } else {
-                result.complete(1L);
-            }
+    private static long treatVersionConflictAsNoMatch(Throwable t) {
+        t = SQLExceptions.unwrap(t);
+        if (t instanceof VersionConflictEngineException) {
+            return 0L;
         }
+        Exceptions.rethrowUnchecked(t);
+        return 0L;
+    }
 
-        @Override
-        public void onFailure(Throwable e) {
-            e = SQLExceptions.unwrap(e); // unwrap to get rid of RemoteTransportException
-            if (e instanceof VersionConflictEngineException) {
-                // treat version conflict as rows affected = 0
-                result.complete(0L);
-            } else {
-                result.completeExceptionally(e);
-            }
+    private static long sumRowCount(List<Long> r) {
+        long rowCount = 0;
+        for (Long count : r) {
+            rowCount += count;
         }
+        return rowCount;
+    }
+
+    private static DeleteRequest deleteRequestFromDocKey(DocTableInfo table, DocKeys.DocKey docKey) {
+        DeleteRequest deleteRequest = new DeleteRequest(
+            ESGetTask.indexName(table, docKey.partitionValues().orNull()),
+            Constants.DEFAULT_MAPPING_TYPE,
+            docKey.id()
+        );
+        deleteRequest.routing(docKey.routing());
+        if (docKey.version().isPresent()) {
+            deleteRequest.version(docKey.version().get());
+        }
+        return deleteRequest;
     }
 
     @Override
     public final List<CompletableFuture<Long>> executeBulk() {
-        try {
-            startContext();
-        } catch (Throwable throwable) {
-		return Collections.singletonList(CompletableFutures.failedFuture(throwable));
+        List<CompletableFuture<Long>> results = createAndSendRequests();
+        swallowExceptionsToErrorRowCount(results);
+
+        List<CompletableFuture<Long>> bulkResults = new ArrayList<>(esDelete.getBulkSize());
+        Map<Integer, Integer> itemToBulkIdx = esDelete.getItemToBulkIdx();
+        CompletableFutures.allAsList(results).whenComplete((rowCounts, t) -> {
+            if (t == null) {
+                long[] resultRowCounts = new long[esDelete.getBulkSize()];
+                Arrays.fill(resultRowCounts, 0L);
+                for (int i = 0; i < rowCounts.size(); i++) {
+                    Long rowCount = rowCounts.get(i);
+                    Integer resultIdx = itemToBulkIdx.get(i);
+                    resultRowCounts[resultIdx] += rowCount;
+                }
+
+                for (int i = 0; i < bulkResults.size(); i++) {
+                    bulkResults.get(i).complete(resultRowCounts[i]);
+                }
+            } else {
+                for (CompletableFuture<Long> bulkResult : bulkResults) {
+                    bulkResult.complete(Executor.ROWCOUNT_ERROR);
+                }
+            }
+        });
+        return bulkResults;
+    }
+
+    private static void swallowExceptionsToErrorRowCount(List<CompletableFuture<Long>> results) {
+        for (int i = 0; i < results.size(); i++) {
+            results.set(i, results.get(i).exceptionally(t -> Executor.ROWCOUNT_ERROR));
         }
-        return results;
     }
 }
