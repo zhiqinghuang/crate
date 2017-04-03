@@ -49,6 +49,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static io.crate.operation.udf.UserDefinedFunctionsMetaData.PROTO;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
 
 @Singleton
 public class UserDefinedFunctionService extends AbstractLifecycleComponent<UserDefinedFunctionService> implements ClusterStateListener {
@@ -208,18 +210,26 @@ public class UserDefinedFunctionService extends AbstractLifecycleComponent<UserD
         if ((oldMetaData == null && newMetaData == null) || (oldMetaData != null && oldMetaData.equals(newMetaData))) {
             return;
         }
-        functions.registerSchemaFunctionResolvers(
-            functions.generateFunctionResolvers(createFunctionImplementations(newMetaData, logger))
-        );
+
+        functions.deregisterSchemaFunctions();
+
+        // group by schema
+        Map<String, List<UserDefinedFunctionMetaData>> schemaMetadataFunctions = newMetaData.functionsMetaData().stream()
+            .collect(groupingBy(UserDefinedFunctionMetaData::schema, toList()));
+
+        for (Map.Entry<String, List<UserDefinedFunctionMetaData>> entry : schemaMetadataFunctions.entrySet()) {
+            functions.registerSchemaFunctionResolvers(entry.getKey(), toFunctionImplementations(entry.getValue(), logger));
+        }
     }
 
-    static Map<FunctionIdent, FunctionImplementation> createFunctionImplementations(UserDefinedFunctionsMetaData metaData,
-                                                                                    ESLogger logger) {
-        Map<FunctionIdent, FunctionImplementation> udfFunctions = new HashMap<>();
-        for (UserDefinedFunctionMetaData function : metaData.functionsMetaData()) {
+    static Map<FunctionIdent, FunctionImplementation> toFunctionImplementations(
+        List<UserDefinedFunctionMetaData> functionsMetadata, ESLogger logger) {
+
+        Map<FunctionIdent, FunctionImplementation> functions = new HashMap<>();
+        for (UserDefinedFunctionMetaData function : functionsMetadata) {
             try {
                 FunctionImplementation impl = UserDefinedFunctionFactory.of(function);
-                udfFunctions.put(impl.info().ident(), impl);
+                functions.put(impl.info().ident(), impl);
             } catch (javax.script.ScriptException e) {
                 logger.warn(
                     String.format(Locale.ENGLISH, "Can't create user defined function '%s(%s)'",
@@ -228,7 +238,7 @@ public class UserDefinedFunctionService extends AbstractLifecycleComponent<UserD
                     ), e);
             }
         }
-        return udfFunctions;
+        return functions;
     }
 
     static class RegisterUserDefinedFunctionRequest extends ClusterStateUpdateRequest<RegisterUserDefinedFunctionRequest> {

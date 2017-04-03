@@ -95,7 +95,7 @@ public class UserDefinedFunctionsMetaData extends AbstractDiffable<MetaData.Cust
         }
     }
 
-    public Collection<UserDefinedFunctionMetaData> functionsMetaData() {
+    public List<UserDefinedFunctionMetaData> functionsMetaData() {
         return functionsMetaData;
     }
 

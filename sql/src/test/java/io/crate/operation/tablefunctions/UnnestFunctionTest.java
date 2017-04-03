@@ -27,10 +27,9 @@ import io.crate.analyze.relations.DocTableRelation;
 import io.crate.analyze.symbol.Function;
 import io.crate.analyze.symbol.Symbol;
 import io.crate.data.Bucket;
-import io.crate.metadata.FunctionIdent;
+import io.crate.data.Input;
 import io.crate.metadata.Functions;
 import io.crate.metadata.tablefunctions.TableFunctionImplementation;
-import io.crate.data.Input;
 import io.crate.sql.tree.QualifiedName;
 import io.crate.test.integration.CrateUnitTest;
 import io.crate.testing.SqlExpressions;
@@ -58,9 +57,8 @@ public class UnnestFunctionTest extends CrateUnitTest {
         Symbol functionSymbol = sqlExpressions.asSymbol(expr);
         functionSymbol = sqlExpressions.normalize(functionSymbol);
         Function function = (Function) functionSymbol;
-        FunctionIdent ident = function.info().ident();
-        TableFunctionImplementation tableFunction = (TableFunctionImplementation)
-            functions.getSafe(ident.name(), ident.argumentTypes());
+        TableFunctionImplementation tableFunction
+            = (TableFunctionImplementation) functions.getQualifiedSafe(function.info().ident());
         return tableFunction.execute(function.arguments().stream().map(a -> (Input) a).collect(Collectors.toList()));
     }
 

@@ -39,10 +39,7 @@ import io.crate.analyze.symbol.format.SymbolFormatter;
 import io.crate.exceptions.ColumnUnknownException;
 import io.crate.exceptions.ConversionException;
 import io.crate.exceptions.UnsupportedFeatureException;
-import io.crate.metadata.FunctionIdent;
-import io.crate.metadata.FunctionInfo;
-import io.crate.metadata.Functions;
-import io.crate.metadata.Reference;
+import io.crate.metadata.*;
 import io.crate.metadata.table.Operation;
 import io.crate.operation.aggregation.impl.CollectSetAggregation;
 import io.crate.operation.operator.*;
@@ -139,8 +136,12 @@ public class ExpressionAnalyzer {
         }
     }
 
-    private FunctionInfo getFunctionInfo(String name, List<DataType> argumentTypes) {
-        return functions.getSafe(name, argumentTypes).info();
+    private FunctionInfo getBuiltinFunctionInfo(String name, List<DataType> argumentTypes) {
+        return functions.getBuiltinSafe(name, argumentTypes).info();
+    }
+
+    private FunctionInfo getQualifiedFunctionInfo(String schema, String name, List<DataType> argumentTypes) {
+        return functions.getQualifiedSafe(new FunctionIdent(schema, name, argumentTypes)).info();
     }
 
     protected Symbol convertFunctionCall(FunctionCall node, ExpressionAnalysisContext context) {
@@ -153,7 +154,18 @@ public class ExpressionAnalyzer {
             arguments.add(argSymbol);
         }
 
-        //
+        List<String> parts = node.getName().getParts();
+        String schema;
+        String name;
+        if (parts.size() == 1) {
+            schema = sessionContext.defaultSchema() == null
+                ? Schemas.DEFAULT_SCHEMA_NAME : sessionContext.defaultSchema();
+            name = parts.get(0);
+        } else {
+            schema = parts.get(0);
+            name = parts.get(1);
+        }
+
         FunctionInfo functionInfo;
         if (node.isDistinct()) {
             if (argumentTypes.size() > 1) {
@@ -162,23 +174,22 @@ public class ExpressionAnalyzer {
             }
             // define the inner function. use the arguments/argumentTypes from above
             Symbol innerFunction = context.allocateFunction(
-                getFunctionInfo(CollectSetAggregation.NAME, argumentTypes), arguments);
+                getQualifiedFunctionInfo(schema, CollectSetAggregation.NAME, argumentTypes), arguments);
 
             // define the outer function which contains the inner function as argument.
             String nodeName = "collection_" + node.getName().toString();
-            List<Symbol> outerArguments = Arrays.<Symbol>asList(innerFunction);
-            ImmutableList<DataType> outerArgumentTypes =
-                ImmutableList.<DataType>of(new SetType(argumentTypes.get(0)));
+            List<Symbol> outerArguments = Arrays.asList(innerFunction);
+            ImmutableList<DataType> outerArgumentTypes = ImmutableList.of(new SetType(argumentTypes.get(0)));
 
             try {
-                functionInfo = getFunctionInfo(nodeName, outerArgumentTypes);
+                functionInfo = getQualifiedFunctionInfo(schema, nodeName, outerArgumentTypes);
             } catch (UnsupportedOperationException ex) {
                 throw new UnsupportedOperationException(String.format(Locale.ENGLISH,
                     "unknown function %s(DISTINCT %s)", node.getName(), argumentTypes.get(0)), ex);
             }
             arguments = outerArguments;
         } else {
-            functionInfo = getFunctionInfo(node.getName().toString(), argumentTypes);
+            functionInfo = getQualifiedFunctionInfo(schema, name, argumentTypes);
         }
         return context.allocateFunction(functionInfo, arguments);
     }
@@ -413,11 +424,13 @@ public class ExpressionAnalyzer {
         @Override
         protected Symbol visitIsNotNullPredicate(IsNotNullPredicate node, ExpressionAnalysisContext context) {
             Symbol argument = process(node.getValue(), context);
-            FunctionInfo isNullInfo =
-                getFunctionInfo(io.crate.operation.predicate.IsNullPredicate.NAME, ImmutableList.of(argument.valueType()));
+            FunctionInfo isNullInfo = getBuiltinFunctionInfo(
+                io.crate.operation.predicate.IsNullPredicate.NAME, ImmutableList.of(argument.valueType())
+            );
             return context.allocateFunction(
                 NotPredicate.INFO,
-                Arrays.asList(context.allocateFunction(isNullInfo, Arrays.asList(argument))));
+                Arrays.asList(context.allocateFunction(isNullInfo, Arrays.asList(argument)))
+            );
         }
 
         @Override
@@ -446,14 +459,17 @@ public class ExpressionAnalyzer {
                 Symbol indexSymbol = index.accept(this, context);
                 // rewrite array access to subscript scalar
                 return context.allocateFunction(
-                    getFunctionInfo(
+                    getBuiltinFunctionInfo(
                         SubscriptFunction.NAME,
-                        ImmutableList.of(subscriptSymbol.valueType(), indexSymbol.valueType())),
+                        ImmutableList.of(subscriptSymbol.valueType(), indexSymbol.valueType())
+                    ),
                     Arrays.asList(subscriptSymbol, indexSymbol)
                 );
             } else if (parts != null && subscriptExpression != null) {
-                FunctionInfo info = getFunctionInfo( SubscriptObjectFunction.NAME,
-                    ImmutableList.of(subscriptSymbol.valueType(), DataTypes.STRING));
+                FunctionInfo info = getBuiltinFunctionInfo(
+                    SubscriptObjectFunction.NAME,
+                    ImmutableList.of(subscriptSymbol.valueType(), DataTypes.STRING)
+                );
 
                 Symbol function = context.allocateFunction(info, Arrays.asList(subscriptSymbol, Literal.of(parts.get(0))));
                 for (int i = 1; i < parts.size(); i++) {
@@ -488,7 +504,8 @@ public class ExpressionAnalyzer {
         protected Symbol visitNotExpression(NotExpression node, ExpressionAnalysisContext context) {
             Symbol argument = process(node.getValue(), context);
             return context.allocateFunction(
-                getFunctionInfo(NotPredicate.NAME, Arrays.asList(argument.valueType())), Arrays.asList(argument));
+                getBuiltinFunctionInfo(NotPredicate.NAME, Arrays.asList(argument.valueType())), Arrays.asList(argument)
+            );
         }
 
         @Override
@@ -499,7 +516,9 @@ public class ExpressionAnalyzer {
             Comparison comparison = new Comparison(node.getType(), left, right);
             comparison.normalize(context);
             FunctionIdent ident = comparison.toFunctionIdent();
-            return context.allocateFunction(getFunctionInfo(ident.name(), ident.argumentTypes()), comparison.arguments());
+            return context.allocateFunction(
+                getBuiltinFunctionInfo(ident.name(), ident.argumentTypes()), comparison.arguments()
+            );
         }
 
         @Override
@@ -537,8 +556,9 @@ public class ExpressionAnalyzer {
             String operatorName;
             operatorName = AnyOperator.OPERATOR_PREFIX + operationType.getValue();
             return context.allocateFunction(
-                getFunctionInfo(operatorName, Arrays.asList(leftSymbol.valueType(), arraySymbol.valueType())),
-                Arrays.asList(leftSymbol, arraySymbol));
+                getBuiltinFunctionInfo(operatorName, Arrays.asList(leftSymbol.valueType(), arraySymbol.valueType())),
+                Arrays.asList(leftSymbol, arraySymbol)
+            );
         }
 
         @Override
@@ -558,8 +578,9 @@ public class ExpressionAnalyzer {
             String operatorName = node.inverse() ? AnyNotLikeOperator.NAME : AnyLikeOperator.NAME;
 
             return context.allocateFunction(
-                getFunctionInfo(operatorName, Arrays.asList(leftSymbol.valueType(), rightSymbol.valueType())),
-                Arrays.asList(leftSymbol, rightSymbol));
+                getBuiltinFunctionInfo(operatorName, Arrays.asList(leftSymbol.valueType(), rightSymbol.valueType())),
+                Arrays.asList(leftSymbol, rightSymbol)
+            );
         }
 
         @Override
@@ -571,8 +592,9 @@ public class ExpressionAnalyzer {
             expression = castIfNeededOrFail(expression, DataTypes.STRING);
             Symbol pattern = castIfNeededOrFail(process(node.getPattern(), context), DataTypes.STRING);
             return context.allocateFunction(
-                getFunctionInfo(LikeOperator.NAME, Arrays.asList(expression.valueType(), pattern.valueType())),
-                Arrays.asList(expression, pattern));
+                getBuiltinFunctionInfo(LikeOperator.NAME, Arrays.asList(expression.valueType(), pattern.valueType())),
+                Arrays.asList(expression, pattern)
+            );
         }
 
         @Override
@@ -580,8 +602,9 @@ public class ExpressionAnalyzer {
             Symbol value = process(node.getValue(), context);
 
             return context.allocateFunction(
-                getFunctionInfo(io.crate.operation.predicate.IsNullPredicate.NAME, ImmutableList.of(value.valueType())),
-                Arrays.asList(value));
+                getBuiltinFunctionInfo(io.crate.operation.predicate.IsNullPredicate.NAME, ImmutableList.of(value.valueType())),
+                Arrays.asList(value)
+            );
         }
 
         @Override
@@ -598,10 +621,11 @@ public class ExpressionAnalyzer {
             Symbol right = process(node.getRight(), context);
 
             return context.allocateFunction(
-                getFunctionInfo(
+                getBuiltinFunctionInfo(
                     node.getType().name().toLowerCase(Locale.ENGLISH),
                     Arrays.asList(left.valueType(), right.valueType())),
-                Arrays.asList(left, right));
+                Arrays.asList(left, right)
+            );
         }
 
         @Override
@@ -657,8 +681,9 @@ public class ExpressionAnalyzer {
                 for (Expression value : values) {
                     arguments.add(process(value, context));
                 }
-                return context
-                    .allocateFunction(getFunctionInfo(ArrayFunction.NAME, Symbols.extractTypes(arguments)), arguments);
+                return context.allocateFunction(
+                    getBuiltinFunctionInfo(ArrayFunction.NAME, Symbols.extractTypes(arguments)), arguments
+                );
             }
         }
 
@@ -673,8 +698,8 @@ public class ExpressionAnalyzer {
                 arguments.add(Literal.of(entry.getKey()));
                 arguments.add(process(entry.getValue(), context));
             }
-            return context
-                .allocateFunction(getFunctionInfo(MapFunction.NAME, Symbols.extractTypes(arguments)), arguments);
+            return context.allocateFunction(
+                getBuiltinFunctionInfo(MapFunction.NAME, Symbols.extractTypes(arguments)), arguments);
         }
 
         @Override
@@ -693,12 +718,12 @@ public class ExpressionAnalyzer {
             Comparison gte = new Comparison(ComparisonExpression.Type.GREATER_THAN_OR_EQUAL, value, min);
             FunctionIdent gteIdent = gte.normalize(context).toFunctionIdent();
             Function gteFunc = context.allocateFunction(
-                getFunctionInfo(gteIdent.name(), gteIdent.argumentTypes()), gte.arguments());
+                getBuiltinFunctionInfo(gteIdent.name(), gteIdent.argumentTypes()), gte.arguments());
 
             Comparison lte = new Comparison(ComparisonExpression.Type.LESS_THAN_OR_EQUAL, value, max);
             FunctionIdent lteIdent = lte.normalize(context).toFunctionIdent();
             Function lteFunc = context.allocateFunction(
-                getFunctionInfo(lteIdent.name(), lteIdent.argumentTypes()), lte.arguments());
+                getBuiltinFunctionInfo(lteIdent.name(), lteIdent.argumentTypes()), lte.arguments());
 
             return AndOperator.of(gteFunc, lteFunc);
         }

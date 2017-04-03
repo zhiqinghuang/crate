@@ -25,7 +25,6 @@ package io.crate.operation;
 import io.crate.analyze.symbol.*;
 import io.crate.analyze.symbol.format.SymbolFormatter;
 import io.crate.data.Input;
-import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionImplementation;
 import io.crate.metadata.Functions;
 import io.crate.metadata.Scalar;
@@ -43,8 +42,7 @@ public class BaseImplementationSymbolVisitor<C> extends SymbolVisitor<C, Input<?
 
     @Override
     public Input<?> visitFunction(Function function, C context) {
-        FunctionIdent ident = function.info().ident();
-        final FunctionImplementation functionImplementation = functions.get(ident.name(), ident.argumentTypes());
+        final FunctionImplementation functionImplementation = functions.getQualified(function.info().ident());
         if (functionImplementation instanceof Scalar<?, ?>) {
             List<Symbol> arguments = function.arguments();
             Scalar<?, ?> scalarImpl = ((Scalar) functionImplementation).compile(arguments);

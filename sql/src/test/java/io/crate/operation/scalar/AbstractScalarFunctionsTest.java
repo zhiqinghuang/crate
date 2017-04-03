@@ -111,8 +111,7 @@ public abstract class AbstractScalarFunctionsTest extends CrateUnitTest {
             return;
         }
         Function function = (Function) functionSymbol;
-        FunctionIdent ident = function.info().ident();
-        FunctionImplementation impl = functions.get(ident.name(), ident.argumentTypes());
+        FunctionImplementation impl = functions.getQualified(function.info().ident());
         assertThat(impl, Matchers.notNullValue());
 
         Symbol normalized = sqlExpressions.normalize(function);
@@ -157,8 +156,7 @@ public abstract class AbstractScalarFunctionsTest extends CrateUnitTest {
             return;
         }
         Function function = (Function) functionSymbol;
-        FunctionIdent ident = function.info().ident();
-        Scalar scalar = (Scalar) functions.getSafe(ident.name(), ident.argumentTypes());
+        Scalar scalar = (Scalar) functions.getQualifiedSafe(function.info().ident());
 
         InputApplierContext inputApplierContext = new InputApplierContext(inputs, sqlExpressions);
         AssertingInput[] arguments = new AssertingInput[function.arguments().size()];
@@ -183,8 +181,7 @@ public abstract class AbstractScalarFunctionsTest extends CrateUnitTest {
         functionSymbol = sqlExpressions.normalize(functionSymbol);
         assertThat("function expression was normalized, compile would not be hit", functionSymbol, not(instanceOf(Literal.class)));
         Function function = (Function) functionSymbol;
-        FunctionIdent ident = function.info().ident();
-        Scalar scalar = (Scalar) functions.getSafe(ident.name(), ident.argumentTypes());
+        Scalar scalar = (Scalar) functions.getQualified(function.info().ident());
         assert scalar != null : "function must be registered";
 
         Scalar compiled = scalar.compile(function.arguments());
@@ -208,8 +205,7 @@ public abstract class AbstractScalarFunctionsTest extends CrateUnitTest {
 
     @SuppressWarnings("unchecked")
     protected <T extends FunctionImplementation> T getFunction(String functionName, List<DataType> argTypes) {
-
-        return (T) functions.get(functionName, argTypes);
+        return (T) functions.getQualified(new FunctionIdent(functionName, argTypes));
     }
 
     protected Symbol normalize(String functionName, Object value, DataType type) {
@@ -313,7 +309,8 @@ public abstract class AbstractScalarFunctionsTest extends CrateUnitTest {
                 return (Input) context.sqlExpressions.normalize(function);
             } catch (Exception e) {
                 FunctionIdent ident = function.info().ident();
-                Scalar scalar = (Scalar) context.sqlExpressions.functions().get(ident.name(), ident.argumentTypes());
+                Scalar scalar =
+                    (Scalar) context.sqlExpressions.functions().getBuiltin(ident.name(), ident.argumentTypes());
                 return new FunctionExpression<>(scalar, argInputs);
             }
         }

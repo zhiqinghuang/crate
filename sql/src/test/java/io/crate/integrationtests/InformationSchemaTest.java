@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.crate.Version;
 import io.crate.action.sql.SQLActionException;
+import io.crate.metadata.Schemas;
 import io.crate.metadata.doc.DocIndexMetaData;
 import io.crate.metadata.settings.CrateSettings;
 import io.crate.testing.TestingHelpers;
@@ -398,7 +399,10 @@ public class InformationSchemaTest extends SQLTransportIntegrationTest {
             execute("create function substract_test(long, long, long) " +
                 "returns long language JAVASCRIPT " +
                 "as 'function substract_test(a, b, c) { return a - b - c; }'");
-            waitForFunctionCreatedOnAll("substract_test", ImmutableList.of(DataTypes.LONG, DataTypes.LONG, DataTypes.LONG));
+            waitForFunctionCreatedOnAll(Schemas.DEFAULT_SCHEMA_NAME,
+                "substract_test",
+                ImmutableList.of(DataTypes.LONG, DataTypes.LONG, DataTypes.LONG)
+            );
 
             execute("select routine_name, routine_body, data_type, routine_definition, routine_schema" +
                 " from information_schema.routines " +

@@ -31,23 +31,23 @@ import org.elasticsearch.common.inject.Inject;
 
 import javax.annotation.Nullable;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class Functions {
 
     private final Map<String, FunctionResolver> functionResolvers;
-    private final AtomicReference< Map<String, FunctionResolver>> udfFunctionResolvers = new AtomicReference<>();
+    private final Map<String, Map<String, FunctionResolver>> schemaFunctionResolvers;
 
     @Inject
     public Functions(Map<FunctionIdent, FunctionImplementation> functionImplementations,
                      Map<String, FunctionResolver> functionResolvers) {
         this.functionResolvers = Maps.newHashMap(functionResolvers);
         this.functionResolvers.putAll(generateFunctionResolvers(functionImplementations));
-        udfFunctionResolvers.set(new HashMap<>());
+        schemaFunctionResolvers = new ConcurrentHashMap<>();
     }
 
-    public Map<String, FunctionResolver> generateFunctionResolvers(Map<FunctionIdent, FunctionImplementation> functionImplementations) {
+    private Map<String, FunctionResolver> generateFunctionResolvers(Map<FunctionIdent, FunctionImplementation> functionImplementations) {
         Multimap<String, Tuple<FunctionIdent, FunctionImplementation>> signatures = getSignatures(functionImplementations);
         return signatures.keys().stream()
             .distinct()
@@ -63,54 +63,110 @@ public class Functions {
         return signatureMap;
     }
 
-    public void registerSchemaFunctionResolvers(Map<String, FunctionResolver> resolvers) {
-        udfFunctionResolvers.set(resolvers);
+    public void registerSchemaFunctionResolvers(String schema, Map<FunctionIdent, FunctionImplementation> functions) {
+        schemaFunctionResolvers.put(schema, generateFunctionResolvers(functions));
+    }
+
+    public void deregisterSchemaFunctions() {
+        schemaFunctionResolvers.clear();
     }
 
     /**
-     * Returns the function implementation for the given function name and arguments.
-     *
-     * @param name           The function name.
-     * @param argumentsTypes The function argument types.
-     * @return The function implementation..
-     * @throws UnsupportedOperationException if an implementation is not found.
-     */
-    public FunctionImplementation getSafe(String name, List<DataType> argumentsTypes)
-        throws IllegalArgumentException, UnsupportedOperationException {
-        FunctionImplementation implementation = null;
-        String exceptionMessage = null;
-        try {
-            implementation = get(name, argumentsTypes);
-        } catch (IllegalArgumentException e) {
-            if (e.getMessage() != null && !e.getMessage().isEmpty()) {
-                exceptionMessage = e.getMessage();
-            }
-        }
-        if (implementation == null) {
-            if (exceptionMessage == null) {
-                exceptionMessage = String.format(Locale.ENGLISH, "unknown function: %s(%s)", name,
-                    Joiner.on(", ").join(argumentsTypes));
-            }
-            throw new UnsupportedOperationException(exceptionMessage);
-        }
-        return implementation;
-    }
-
-    /**
-     * Returns the function implementation for the given function name and arguments.
+     * Returns the built-in function implementation for the given function name and arguments.
      *
      * @param name           The function name.
      * @param argumentsTypes The function argument types.
      * @return a function implementation or null if it was not found.
      */
-    public FunctionImplementation get(String name, List<DataType> argumentsTypes) throws IllegalArgumentException {
-        FunctionImplementation function = resolveFunctionForArgumentTypes(argumentsTypes, functionResolvers.get(name));
-        if (function != null) {
-            return function;
-        }
+    @Nullable
+    public FunctionImplementation getBuiltin(String name, List<DataType> argumentsTypes) throws IllegalArgumentException {
+        return resolveFunctionForArgumentTypes(argumentsTypes, functionResolvers.get(name));
+    }
 
-        // fallback to user-defined functions
-        return resolveFunctionForArgumentTypes(argumentsTypes, udfFunctionResolvers.get().get(name));
+    /**
+     * Returns the function implementation for the given function schema, name and arguments.
+     * <p>
+     * The lookup order:
+     * <p>
+     * x.foo -> in the `x` schema
+     * foo -> the session schema -> the default schema
+     *
+     * @param schema         The schema name.
+     * @param name           The function name.
+     * @param argumentsTypes The function argument types.
+     * @return a function implementation or null if it was not found.
+     */
+    @Nullable
+    public FunctionImplementation getUserDefined(@Nullable String schema, String name, List<DataType> argumentsTypes)
+        throws IllegalArgumentException {
+        Map<String, FunctionResolver> functionResolvers
+            = schemaFunctionResolvers.get(schema == null ? Schemas.DEFAULT_SCHEMA_NAME : schema);
+        if (functionResolvers == null) {
+            return null;
+        }
+        return resolveFunctionForArgumentTypes(argumentsTypes, functionResolvers.get(name));
+    }
+
+    /**
+     * Returns the function implementation for the given function ident by
+     * looking up first in the built-in and then in user defined function.
+     *
+     * @param ident The function ident.
+     * @return a function implementation or null if it was not found.
+     */
+    public FunctionImplementation getQualified(FunctionIdent ident) {
+        FunctionImplementation impl = getBuiltin(ident.name(), ident.argumentTypes());
+        if (impl != null) {
+            return impl;
+        }
+        return getUserDefined(ident.schema(), ident.name(), ident.argumentTypes());
+    }
+
+    public FunctionImplementation getQualifiedSafe(FunctionIdent ident) {
+        FunctionImplementation impl = null;
+        String exceptionMessage = null;
+        try {
+            impl = getQualified(ident);
+        } catch (IllegalArgumentException e) {
+            if (e.getMessage() != null && !e.getMessage().isEmpty()) {
+                exceptionMessage = e.getMessage();
+            }
+        }
+        if (impl == null) {
+            if (exceptionMessage == null) {
+                exceptionMessage = String.format(Locale.ENGLISH, "unknown function: %s(%s)", ident.name(),
+                    Joiner.on(", ").join(ident.argumentTypes()));
+            }
+            throw new UnsupportedOperationException(exceptionMessage);
+        }
+        return impl;
+    }
+
+    public FunctionImplementation getBuiltinSafe(String name, List<DataType> argumentTypes) {
+        FunctionImplementation impl = null;
+        String exceptionMessage = null;
+        try {
+            impl = getBuiltin(name, argumentTypes);
+        } catch (IllegalArgumentException e) {
+            if (e.getMessage() != null && !e.getMessage().isEmpty()) {
+                exceptionMessage = e.getMessage();
+            }
+        }
+        throwIfNotFound(name, argumentTypes, impl, exceptionMessage);
+        return impl;
+    }
+
+    private void throwIfNotFound(String name,
+                                 List<DataType> argumentTypes,
+                                 @Nullable FunctionImplementation impl,
+                                 @Nullable String exceptionMessage) {
+        if (impl == null) {
+            throw new UnsupportedOperationException(
+                exceptionMessage == null ?
+                    String.format(Locale.ENGLISH, "unknown function: %s(%s)", name, Joiner.on(", ").join(argumentTypes)) :
+                    exceptionMessage
+            );
+        }
     }
 
     private FunctionImplementation resolveFunctionForArgumentTypes(List<DataType> types, FunctionResolver resolver) {

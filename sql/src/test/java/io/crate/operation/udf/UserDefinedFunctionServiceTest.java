@@ -116,7 +116,8 @@ public class UserDefinedFunctionServiceTest extends CrateUnitTest {
         );
         UserDefinedFunctionsMetaData metaData = UserDefinedFunctionsMetaData.of(invalid, same1);
         // if a function can't be evaluated, it won't be registered
-        Map<FunctionIdent, FunctionImplementation> functionImpl = createFunctionImplementations(metaData, logger);
+        Map<FunctionIdent, FunctionImplementation> functionImpl =
+            toFunctionImplementations(metaData.functionsMetaData(), logger);
         assertThat(functionImpl.size(), is(1));
         // the valid functions will be registered
         assertThat(functionImpl.entrySet().iterator().next().getKey().name(), is("same"));

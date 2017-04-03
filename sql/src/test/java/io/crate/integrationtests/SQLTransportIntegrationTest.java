@@ -407,20 +407,20 @@ public abstract class SQLTransportIntegrationTest extends ESIntegTestCase {
         }, 20L, TimeUnit.SECONDS);
     }
 
-    public void waitForFunctionCreatedOnAll(String name, List<DataType> types) throws Exception {
+    public void waitForFunctionCreatedOnAll(String schema, String name, List<DataType> types) throws Exception {
         assertBusy(() -> {
             Iterable<Functions> functions = internalCluster().getInstances(Functions.class);
             for (Functions function : functions) {
-                assertThat(function.get(name, types), Matchers.notNullValue());
+                assertThat(function.getUserDefined(schema, name, types), Matchers.notNullValue());
             }
         }, 20L, TimeUnit.SECONDS);
     }
 
-    public void waitForFunctionDeleted(String name, List<DataType> types) throws Exception {
+    public void waitForFunctionDeleted(String schema, String name, List<DataType> types) throws Exception {
         assertBusy(() -> {
             Iterable<Functions> functions = internalCluster().getInstances(Functions.class);
             for (Functions function : functions) {
-                assertThat(function.get(name, types), Matchers.nullValue());
+                assertThat(function.getUserDefined(schema, name, types), Matchers.nullValue());
             }
         }, 20L, TimeUnit.SECONDS);
     }
