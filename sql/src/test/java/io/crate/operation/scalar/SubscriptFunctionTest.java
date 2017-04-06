@@ -21,12 +21,11 @@
 
 package io.crate.operation.scalar;
 
+import com.google.common.collect.ImmutableSet;
 import io.crate.analyze.symbol.Literal;
 import io.crate.types.DataTypes;
 import io.crate.types.SetType;
 import org.junit.Test;
-
-import java.util.HashSet;
 
 import static io.crate.testing.SymbolMatchers.isFunction;
 import static io.crate.testing.SymbolMatchers.isLiteral;
@@ -54,7 +53,7 @@ public class SubscriptFunctionTest extends AbstractScalarFunctionsTest {
         expectedException.expect(UnsupportedOperationException.class);
         expectedException.expectMessage("unknown function: subscript(long_set, integer)");
         assertEvaluate("subscript(long_set, a)", 3L,
-            Literal.of(new HashSet<Long>() {{ add(3L); add(7L);}}, new SetType(DataTypes.LONG)),
+            Literal.of(ImmutableSet.of(3L, 7L), new SetType(DataTypes.LONG)),
             Literal.of(DataTypes.INTEGER, 1)
         );
     }
