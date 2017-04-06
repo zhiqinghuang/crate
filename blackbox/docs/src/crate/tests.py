@@ -19,23 +19,27 @@
 # with Crate these terms will supersede the license and you may use the
 # software solely pursuant to the terms of the relevant commercial agreement.
 
-import unittest
+import os
+import re
+import glob
+import time
+import shutil
 import doctest
+import tempfile
+import unittest
 import subprocess
 import zc.customdoctests
-from crate.testing.layer import CrateLayer
-import os
-import shutil
-import re
-import tempfile
-import glob
+
 from functools import partial
-from . import process_test
 from testutils.paths import crate_path, project_path
 from testutils.ports import GLOBAL_PORT_POOL
+
 from crate.crash.command import CrateCmd
 from crate.crash.printer import PrintWrapper, ColorPrinter
 from crate.client import connect
+from crate.testing.layer import CrateLayer
+
+from . import process_test
 
 
 CRATE_HTTP_PORT = GLOBAL_PORT_POOL.get()
@@ -69,16 +73,24 @@ def wait_for_schema_update(schema, table, column):
                     'and column_name = ?'),
                     (schema, table, column))
         count = c.fetchone()[0]
+        time.sleep(0.1)
+    print('OK')
 
-def wait_for_function(name, signatures = 1):
+def wait_for_function(name, num_sig):
+    """
+    Wait for a function to be available in the cluster state.
+    num_sig defines how many signatures of that function are expected.
+    """
     conn = connect('localhost:' + str(CRATE_HTTP_PORT))
     c = conn.cursor()
     count = 0
-    while count < signatures:
+    while count < num_sig:
         c.execute(('select count(*) from information_schema.routines '
                    'where routine_name = ? and routine_type = ?'),
                   (name, 'FUNCTION'))
         count = c.fetchone()[0]
+        time.sleep(0.1)
+    print('OK')
 
 
 def bash_transform(s):

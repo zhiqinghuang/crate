@@ -80,6 +80,7 @@ the table and insert arbitrary objects into the obj column::
 .. Hidden: wait for schema update so that newcol is available
 
     cr> _wait_for_schema_update('doc', 'mytable2', 'newcol')
+    OK
 
 ::
 

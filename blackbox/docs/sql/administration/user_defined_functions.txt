@@ -25,6 +25,7 @@ These functions can be created like this::
 .. hide:
 
     cr> _wait_for_function('subtract', 1)
+    OK
 
 ::
 
@@ -47,6 +48,7 @@ These functions can be created like this::
 .. hide:
 
     cr> _wait_for_function('log10', 1)
+    OK
 
 ::
 
@@ -74,6 +76,7 @@ For example, if you wanted to name two ``geo_point`` arguments ``start_point`` a
 .. hide:
 
     cr> _wait_for_function('calculate_distance', 1)
+    OK
 
 .. NOTE::
 
@@ -94,6 +97,7 @@ You can explicitly assign a schema like this::
 .. hide:
 
     cr> _wait_for_function('log10', 2)
+    OK
 
 
 Supported Types
@@ -151,6 +155,7 @@ This would overload our ``multiply`` function with more arguments::
 .. hide:
 
     cr> _wait_for_function('multiply', 3)
+    OK
 
 Determinism
 -----------
@@ -218,7 +223,8 @@ Here is an example of a JavaScript function returning a ``double array``::
 
 .. hide:
 
-    cr> _wait_for_function('rotate_point')
+    cr> _wait_for_function('rotate_point', 1)
+    OK
 
 Below is an example of a JavaScript function returning a ``WKT`` string,
 which will be casted to ``geo_point``::
@@ -236,7 +242,9 @@ which will be casted to ``geo_point``::
 
 .. hide:
 
-    cr> _wait_for_function('symmetric_point')
+    cr> _wait_for_function('symmetric_point', 1)
+    OK
+
 
 Similarly, if the function specifies the ``geo_shape`` return data type, then
 the JavaScript function should return a ``GeoJson`` object or``WKT`` string::
@@ -251,7 +259,8 @@ the JavaScript function should return a ``GeoJson`` object or``WKT`` string::
 
 .. hide:
 
-    cr> _wait_for_function('line')
+    cr> _wait_for_function('line', 1)
+    OK
 
 .. NOTE::
 
