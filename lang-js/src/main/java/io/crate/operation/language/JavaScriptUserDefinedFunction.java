@@ -28,11 +28,9 @@ package io.crate.operation.language;
 
 import io.crate.analyze.symbol.Symbol;
 import io.crate.data.Input;
-import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.Scalar;
 import io.crate.types.*;
-import jdk.nashorn.api.scripting.NashornScriptEngineFactory;
 import jdk.nashorn.api.scripting.ScriptObjectMirror;
 import jdk.nashorn.internal.runtime.ECMAException;
 import jdk.nashorn.internal.runtime.Undefined;
@@ -40,21 +38,17 @@ import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.lucene.BytesRefs;
 
 import javax.script.*;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class JavaScriptUserDefinedFunction extends Scalar<Object, Object> {
 
     private final FunctionInfo info;
-    private final CompiledScript compiledScript;
-    private final DataType returnType;
+    private final String script;
 
-    JavaScriptUserDefinedFunction(FunctionIdent ident, DataType returnType, CompiledScript compiledScript) {
-        this.info = new FunctionInfo(ident, returnType);
-        this.returnType = returnType;
-        this.compiledScript = compiledScript;
+    JavaScriptUserDefinedFunction(FunctionInfo info, String script) {
+        this.info = info;
+        this.script = script;
     }
 
     @Override
@@ -64,75 +58,71 @@ public class JavaScriptUserDefinedFunction extends Scalar<Object, Object> {
 
     @Override
     public Scalar<Object, Object> compile(List<Symbol> arguments) {
-        // A separate Bindings object allow to create an isolated scope for the function.
-        Bindings bindings = JavaScriptLanguage.ENGINE.createBindings();
         try {
-            compiledScript.eval(bindings);
+            return new CompiledFunction(JavaScriptLanguage.bindScript(script));
         } catch (ScriptException e) {
-            throw new IllegalArgumentException(String.format(Locale.ENGLISH, "Cannot evaluate the script. [%s]", e));
-        }
-        return new CompiledJavaScriptUserDefinedFunction(info().ident(), returnType, bindings);
-    }
-
-
-    private class CompiledJavaScriptUserDefinedFunction extends Scalar<Object, Object> {
-
-        private final FunctionInfo info;
-        private final Bindings bindings;
-
-        private CompiledJavaScriptUserDefinedFunction(FunctionIdent ident,
-                                                      DataType returnType,
-                                                      Bindings bindings) {
-            this.info = new FunctionInfo(ident, returnType);
-            this.bindings = bindings;
-        }
-
-        @Override
-        public FunctionInfo info() {
-            return info;
-        }
-
-        @Override
-        public final Object evaluate(Input<Object>[] values) {
-            return evaluateFunctionWithBindings(bindings, values);
+            // this should not happen if the script was evaluated upfront
+            throw new UnsupportedOperationException("Could not evaluate JavaScript function", e);
         }
     }
 
     @Override
     public Object evaluate(Input<Object>[] values) {
-        Bindings bindings = JavaScriptLanguage.ENGINE.createBindings();
         try {
-            compiledScript.eval(bindings);
+            return evaluateScriptWithBindings(JavaScriptLanguage.bindScript(script), values);
         } catch (ScriptException e) {
-            throw new IllegalArgumentException(String.format(Locale.ENGLISH, "Cannot evaluate the script. [%s]", e));
+            // this should not happen if the script was evaluated upfront
+            throw new UnsupportedOperationException("Could not evaluate JavaScript function", e);
         }
-        return evaluateFunctionWithBindings(bindings, values);
     }
 
-    private Object evaluateFunctionWithBindings(Bindings bindings, Input<Object>[] values) {
+    private class CompiledFunction extends Scalar<Object, Object> {
+
+        private final Bindings bindings;
+
+        private CompiledFunction(Bindings bindings) {
+            this.bindings = bindings;
+        }
+
+        @Override
+        public FunctionInfo info() {
+            // return the functionInfo of the outer class,
+            // because the function info is the same for every compiled instance of a function
+            return info;
+        }
+
+        @Override
+        public final Object evaluate(Input<Object>[] values) {
+            return evaluateScriptWithBindings(bindings, values);
+        }
+
+    }
+
+    private Object evaluateScriptWithBindings(Bindings bindings, Input<Object>[] values) {
+        Object[] args = new Object[values.length];
+        for (int i = 0; i < values.length; i++) {
+            args[i] = processBytesRefInputIfNeeded(values[i].value());
+        }
+
         Object result;
         try {
-            Object[] args = new Object[values.length];
-            for (int i = 0; i < values.length; i++) {
-                args[i] = processBytesRefInputIfNeeded(values[i].value());
-            }
             result = ((ScriptObjectMirror) bindings.get(info.ident().name())).call(this, args);
         } catch (NullPointerException e) {
             throw new UnsupportedOperationException(String.format(Locale.ENGLISH,
                 "The name [%s] of the function signature doesn't match the function name in the function definition.",
-                info.ident().name()));
+                info.ident().name()), e);
         } catch (ECMAException e) {
-            throw new IllegalArgumentException(String.format(Locale.ENGLISH,
-                "The function definition cannot be evaluated. [%s]", e)
-            );
+            throw new UnsupportedOperationException(String.format(Locale.ENGLISH,
+                "The function definition cannot be evaluated. [%s]",
+                info.ident().name()), e);
         }
 
         if (result instanceof ScriptObjectMirror) {
-            return returnType.value(parseScriptObject((ScriptObjectMirror) result));
+            return info.returnType().value(convertScriptResult((ScriptObjectMirror) result));
         } else if (result instanceof Undefined) {
             return null;
         } else {
-            return returnType.value(result);
+            return info.returnType().value(result);
         }
     }
 
@@ -172,8 +162,8 @@ public class JavaScriptUserDefinedFunction extends Scalar<Object, Object> {
         }
     }
 
-    private Object parseScriptObject(ScriptObjectMirror scriptObject) {
-        switch (returnType.id()) {
+    private Object convertScriptResult(ScriptObjectMirror scriptObject) {
+        switch (info.returnType().id()) {
             case ArrayType.ID:
                 if (scriptObject.isArray()) {
                     return scriptObject.values().toArray();
@@ -184,14 +174,14 @@ public class JavaScriptUserDefinedFunction extends Scalar<Object, Object> {
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             case GeoPointType.ID:
                 if (scriptObject.isArray()) {
-                    return GeoPointType.INSTANCE.value(scriptObject.values().stream()
-                        .toArray(Object[]::new));
+                    return GeoPointType.INSTANCE.value(scriptObject.values().toArray());
                 }
                 break;
             case SetType.ID:
-                return scriptObject.values().stream().collect(Collectors.toSet());
+                return new HashSet<>(scriptObject.values());
         }
-        throw new UnsupportedOperationException(String.format(Locale.ENGLISH, "The return type of the function [%s]" +
-            " is not compatible with the type of the function evaluation result.", returnType));
+        throw new IllegalArgumentException(String.format(Locale.ENGLISH,
+            "The return type of the function [%s] is not compatible with the type of the function evaluation result.",
+            info.returnType()));
     }
 }

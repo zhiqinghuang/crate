@@ -85,9 +85,16 @@ public class JavascriptUserDefinedFunctionTest extends AbstractScalarFunctionsTe
             definition
         );
 
-        functionImplementations.put(new FunctionIdent(Schemas.DEFAULT_SCHEMA_NAME, name, types),
-            udfService.getLanguage(JS).createFunctionImplementation(udfMeta));
-        functions.registerUdfResolversForSchema(Schemas.DEFAULT_SCHEMA_NAME, functionImplementations);
+        String validation = udfService.getLanguage(JS).validate(udfMeta);
+        if (validation == null) {
+            functionImplementations.put(
+                new FunctionIdent(Schemas.DEFAULT_SCHEMA_NAME, name, types),
+                udfService.getLanguage(JS).createFunctionImplementation(udfMeta)
+            );
+            functions.registerUdfResolversForSchema(Schemas.DEFAULT_SCHEMA_NAME, functionImplementations);
+        } else {
+            throw new ScriptException(validation);
+        }
     }
 
     @After

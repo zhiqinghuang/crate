@@ -18,21 +18,19 @@
 
 package io.crate.operation.language;
 
-
 import io.crate.metadata.FunctionIdent;
+import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.Scalar;
 import io.crate.operation.udf.UDFLanguage;
 import io.crate.operation.udf.UserDefinedFunctionMetaData;
 import io.crate.operation.udf.UserDefinedFunctionService;
 import io.crate.types.DataType;
+import jdk.nashorn.api.scripting.NashornScriptEngine;
 import jdk.nashorn.api.scripting.NashornScriptEngineFactory;
 import org.elasticsearch.common.inject.Inject;
 
 import javax.annotation.Nullable;
-import javax.script.Compilable;
-import javax.script.CompiledScript;
-import javax.script.ScriptEngine;
-import javax.script.ScriptException;
+import javax.script.*;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
@@ -40,36 +38,42 @@ public class JavaScriptLanguage implements UDFLanguage {
 
     private static final String NAME = "javascript";
 
-    static final ScriptEngine ENGINE = new NashornScriptEngineFactory().getScriptEngine("--no-java", "--no-syntax-extensions");
+    private static final NashornScriptEngine ENGINE = (NashornScriptEngine) new NashornScriptEngineFactory()
+        .getScriptEngine("--no-java", "--no-syntax-extensions");
 
     @Inject
-    public JavaScriptLanguage(UserDefinedFunctionService udfService) {
+    JavaScriptLanguage(UserDefinedFunctionService udfService) {
         udfService.registerLanguage(this);
     }
 
     public Scalar createFunctionImplementation(UserDefinedFunctionMetaData meta) throws ScriptException {
-        CompiledScript compiledScript = ((Compilable) ENGINE).compile(meta.definition());
-
-        return new JavaScriptUserDefinedFunction(
+        FunctionInfo info = new FunctionInfo(
             new FunctionIdent(meta.schema(), meta.name(), meta.argumentTypes()),
-            meta.returnType(),
-            compiledScript
+            meta.returnType()
         );
+        return new JavaScriptUserDefinedFunction(info, meta.definition());
     }
 
     @Nullable
     public String validate(UserDefinedFunctionMetaData meta) {
         try {
-            ((Compilable) ENGINE).compile(meta.definition());
-        } catch (ScriptException e){
-            return  String.format(Locale.ENGLISH,
-                "Invalid JavaScript in function '%s(%s)'",
+            bindScript(meta.definition());
+        } catch (ScriptException e) {
+            return String.format(Locale.ENGLISH, "Invalid JavaScript in function '%s.%s(%s)': %s",
+                meta.schema(),
                 meta.name(),
-                meta.argumentTypes().stream().map(DataType::getName)
-                    .collect(Collectors.joining(", "))
+                meta.argumentTypes().stream().map(DataType::getName).collect(Collectors.joining(", ")),
+                e.getMessage()
             );
         }
         return null;
+    }
+
+    static Bindings bindScript(String source) throws ScriptException {
+        Bindings bindings = ENGINE.createBindings();
+        CompiledScript compiledScript = ENGINE.compile(source);
+        compiledScript.eval(bindings);
+        return bindings;
     }
 
     public String name() {
