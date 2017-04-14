@@ -5,13 +5,12 @@ User Defined Functions
 
 .. note::
 
-    The following examples use :ref:`udf_lang_js` as language for user defined
-    functions. The JavaScript language, however, is only available as an 
-    Enterprise feature.
-    You can enable and disable the :ref:`conf_enterprise_license` via the
-    configuration file.
-    The Javascript language is an experimental feature and is therfore disabled
-    by default. You can enable the :ref:`conf_lang_js_enabled` via the configuration file.
+    The following examples use :ref:`udf_lang_js` as language for functions.
+    The JavaScript language, however, is only available as an Enterprise
+    feature.  You can enable and disable the :ref:`conf_enterprise_license` via
+    the configuration file.  The Javascript language is an experimental feature
+    and is therfore disabled by default. You can enable the
+    :ref:`conf_lang_js_enabled` via the configuration file.
 
 
 
@@ -98,16 +97,15 @@ You can explicitly assign a schema like this::
 
 .. warning::
 
-    :ref:`snapshot-restore` can't be used to backup user defined functions,
-    because snapshots contain table data only.
+    :ref:`snapshot-restore` can't be used to backup functions, because
+    snapshots contain table data only.
 
 Supported Types
 ---------------
 
-The argument types, and the return type of the user-defined function can be
-any of the CrateDB supported :ref:`sql_ddl_datatypes`. Data types of values
-passed into a user-defined function must strictly correspond to its argument
-data types.
+The argument types, and the return type of the function can be any of the
+CrateDB supported :ref:`sql_ddl_datatypes`. Data types of values passed into a
+function must strictly correspond to its argument data types.
 
 .. note::
 
@@ -200,7 +198,7 @@ JavaScript
 The UDF language ``javascript`` supports the `ECMAScript 5.1`_ standard.
 
 CrateDB uses the Java built-in JavaScript engine Nashorn_ to interpret and
-execute user defined functions written in JavaScript. The engine is initialized
+execute functions written in JavaScript. The engine is initialized
 using the ``--no-java`` option which basically restricts all access to Java
 APIs from within the JavaScript context. CrateDB's engine also does not allow
 non-standard syntax extensions (``--no-syntax-extensions``).
@@ -225,13 +223,13 @@ its disabled by default. You can enable it with the ``lang_js.enabled`` setting:
 Supported Types
 ^^^^^^^^^^^^^^^
 
-JavaScript user-defined functions can handle all CrateDB data types. However,
-for some return types the user defined functions output must correspond to
-the certain format.
+JavaScript functions can handle all CrateDB data types. However, for some
+return types the function output must correspond to the certain
+format.
 
-If a user-defined function requires ``geo_point`` as a return type,
-then the JavaScript function must return a ``double array`` of size 2,
-``WKT`` string or ``GeoJson`` object.
+If a function requires ``geo_point`` as a return type, then the JavaScript
+function must return a ``double array`` of size 2, ``WKT`` string or
+``GeoJson`` object.
 
 Here is an example of a JavaScript function returning a ``double array``::
 
