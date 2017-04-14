@@ -41,7 +41,6 @@ import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.cluster.service.ClusterService;
-import org.elasticsearch.common.settings.Settings;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -70,11 +69,8 @@ public class JavascriptUserDefinedFunctionTest extends AbstractScalarFunctionsTe
     @Before
     public void setUp() throws Exception {
         super.setUp();
-        Settings settings = Settings.builder()
-            .put("udf.enabled", true)
-            .build();
         udfService = new UserDefinedFunctionService(mock(ClusterService.class));
-        udfService.registerLanguage(new JavaScriptLanguage(udfService, settings));
+        udfService.registerLanguage(new JavaScriptLanguage(udfService));
     }
 
     private Map<FunctionIdent, FunctionImplementation> functionImplementations = new HashMap<>();
@@ -89,7 +85,8 @@ public class JavascriptUserDefinedFunctionTest extends AbstractScalarFunctionsTe
             definition
         );
 
-        functionImplementations.put(new FunctionIdent(Schemas.DEFAULT_SCHEMA_NAME, name, types), udfService.getLanguage(JS).createFunctionImplementation(udfMeta));
+        functionImplementations.put(new FunctionIdent(Schemas.DEFAULT_SCHEMA_NAME, name, types),
+            udfService.getLanguage(JS).createFunctionImplementation(udfMeta));
         functions.registerUdfResolversForSchema(Schemas.DEFAULT_SCHEMA_NAME, functionImplementations);
     }
 

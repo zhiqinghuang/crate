@@ -27,7 +27,6 @@ import io.crate.operation.udf.UserDefinedFunctionService;
 import io.crate.types.DataType;
 import jdk.nashorn.api.scripting.NashornScriptEngineFactory;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.settings.Settings;
 
 import javax.annotation.Nullable;
 import javax.script.Compilable;
@@ -44,7 +43,7 @@ public class JavaScriptLanguage implements UDFLanguage {
     static final ScriptEngine ENGINE = new NashornScriptEngineFactory().getScriptEngine("--no-java", "--no-syntax-extensions");
 
     @Inject
-    public JavaScriptLanguage(UserDefinedFunctionService udfService, Settings settings) {
+    public JavaScriptLanguage(UserDefinedFunctionService udfService) {
         udfService.registerLanguage(this);
     }
 

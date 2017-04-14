@@ -45,7 +45,7 @@ public class JavaScriptLanguagePlugin implements Plugin {
 
     @Override
     public String description() {
-        return "CrateDB JavaScriptLanguage Plugin";
+        return "CrateDB JavaScript Language Plugin";
     }
 
     @Override
