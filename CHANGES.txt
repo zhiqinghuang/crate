@@ -111,7 +111,7 @@ Breaking Changes
 Changes
 =======
 
- - Added javascript language module
+ - Added javascript language for functions
 
  - Added support for user defined functions.
 
