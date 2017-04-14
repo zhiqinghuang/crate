@@ -39,13 +39,12 @@ import java.util.stream.Collectors;
 
 public class JavaScriptLanguage implements UDFLanguage {
 
-    private final String name;
+    private static final String NAME = "javascript";
 
     static final ScriptEngine ENGINE = new NashornScriptEngineFactory().getScriptEngine("--no-java", "--no-syntax-extensions");
 
     @Inject
     public JavaScriptLanguage(UserDefinedFunctionService udfService, Settings settings) {
-        this.name = "javascript";
         udfService.registerLanguage(this);
     }
 
@@ -75,6 +74,6 @@ public class JavaScriptLanguage implements UDFLanguage {
     }
 
     public String name() {
-        return this.name;
+        return NAME;
     }
 }
