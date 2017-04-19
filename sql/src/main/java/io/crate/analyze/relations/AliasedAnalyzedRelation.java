@@ -20,54 +20,54 @@
  * agreement.
  */
 
-package io.crate.testing;
+package io.crate.analyze.relations;
 
-import io.crate.analyze.relations.AnalyzedRelation;
-import io.crate.analyze.relations.AnalyzedRelationVisitor;
 import io.crate.analyze.symbol.Field;
-import io.crate.metadata.ColumnIdent;
+import io.crate.exceptions.ColumnUnknownException;
 import io.crate.metadata.Path;
 import io.crate.metadata.table.Operation;
 import io.crate.sql.tree.QualifiedName;
-import io.crate.types.DataTypes;
 
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
-/**
- * relation that will return a Reference with Doc granularity / String type for all columns
- */
-public class DummyRelation implements AnalyzedRelation {
+public class AliasedAnalyzedRelation implements AnalyzedRelation {
 
-    private final Set<ColumnIdent> columnReferences = new HashSet<>();
+    private final AnalyzedRelation child;
+    private final QualifiedName name;
+    private final List<Field> fields;
 
-    public DummyRelation(String... referenceNames) {
-        for (String referenceName : referenceNames) {
-            columnReferences.add(ColumnIdent.fromPath(referenceName));
+    public AliasedAnalyzedRelation(QualifiedName name, AnalyzedRelation child) {
+        this.name = name;
+        this.child = child;
+        this.fields = new ArrayList<>(child.fields().size());
+        for (Field field : child.fields()) {
+            this.fields.add(new Field(this, field.path(), field.valueType()));
         }
     }
 
     @Override
     public <C, R> R accept(AnalyzedRelationVisitor<C, R> visitor, C context) {
-        return null;
+        return visitor.process(child, context);
     }
 
     @Override
-    public Field getField(Path path, Operation operation) throws UnsupportedOperationException {
-        if (columnReferences.contains(path)) {
-            return new Field(this, path, DataTypes.STRING);
-        }
-        return null;
+    public Field getField(Path path, Operation operation) throws UnsupportedOperationException, ColumnUnknownException {
+        Field subField = child.getField(path, operation);
+        return new Field(this, subField.path(), subField.valueType());
     }
 
     @Override
     public List<Field> fields() {
-        return null;
+        return fields;
     }
 
     @Override
     public QualifiedName getQualifiedName() {
-        throw new UnsupportedOperationException("method not supported");
+        return name;
+    }
+
+    public AnalyzedRelation child() {
+        return child;
     }
 }

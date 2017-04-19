@@ -41,7 +41,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.core.Is.is;
 
 @ESIntegTestCase.ClusterScope(minNumDataNodes = 2)
-@UseJdbc
+@UseJdbc(0)
 public class JoinIntegrationTest extends SQLTransportIntegrationTest {
 
     @Test

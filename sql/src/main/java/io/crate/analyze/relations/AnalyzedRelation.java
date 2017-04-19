@@ -27,7 +27,6 @@ import io.crate.metadata.Path;
 import io.crate.metadata.table.Operation;
 import io.crate.sql.tree.QualifiedName;
 
-import javax.annotation.Nonnull;
 import java.util.List;
 
 public interface AnalyzedRelation {
@@ -39,6 +38,4 @@ public interface AnalyzedRelation {
     List<Field> fields();
 
     QualifiedName getQualifiedName();
-
-    void setQualifiedName(@Nonnull QualifiedName qualifiedName);
 }

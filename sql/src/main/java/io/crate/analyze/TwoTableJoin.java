@@ -32,7 +32,6 @@ import io.crate.metadata.Path;
 import io.crate.metadata.table.Operation;
 import io.crate.sql.tree.QualifiedName;
 
-import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -106,11 +105,6 @@ public class TwoTableJoin implements QueriedRelation {
     @Override
     public QualifiedName getQualifiedName() {
         return name;
-    }
-
-    @Override
-    public void setQualifiedName(@Nonnull QualifiedName qualifiedName) {
-        throw new UnsupportedOperationException("method not supported");
     }
 
     public QualifiedName leftName() {

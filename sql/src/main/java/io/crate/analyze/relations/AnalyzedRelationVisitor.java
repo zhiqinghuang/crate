@@ -71,4 +71,8 @@ public abstract class AnalyzedRelationVisitor<C, R> {
     public R visitQueriedSelectRelation(QueriedSelectRelation relation, C context) {
         return visitAnalyzedRelation(relation, context);
     }
+
+    public R visitAliasedAnalyzedRelation(AliasedAnalyzedRelation relation, C context) {
+        return visitAnalyzedRelation(relation, context);
+    }
 }

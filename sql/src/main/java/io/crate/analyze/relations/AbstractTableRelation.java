@@ -34,7 +34,6 @@ import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import io.crate.types.ObjectType;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
 import java.util.function.Predicate;
@@ -49,7 +48,7 @@ public abstract class AbstractTableRelation<T extends TableInfo> implements Anal
     protected T tableInfo;
     private List<Field> outputs;
     private Map<Path, Reference> allocatedFields = new HashMap<>();
-    private QualifiedName qualifiedName;
+    private final QualifiedName qualifiedName;
 
     public AbstractTableRelation(T tableInfo) {
         this.tableInfo = tableInfo;
@@ -140,11 +139,6 @@ public abstract class AbstractTableRelation<T extends TableInfo> implements Anal
     @Override
     public QualifiedName getQualifiedName() {
         return qualifiedName;
-    }
-
-    @Override
-    public void setQualifiedName(@Nonnull QualifiedName qualifiedName) {
-        this.qualifiedName = qualifiedName;
     }
 
     /**

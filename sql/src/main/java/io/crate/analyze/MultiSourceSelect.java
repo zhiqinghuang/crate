@@ -28,7 +28,6 @@ import io.crate.metadata.Path;
 import io.crate.metadata.table.Operation;
 import io.crate.sql.tree.QualifiedName;
 
-import javax.annotation.Nonnull;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -39,13 +38,15 @@ public class MultiSourceSelect implements QueriedRelation {
     private final QuerySpec querySpec;
     private final Fields fields;
     private final List<JoinPair> joinPairs;
-    private QualifiedName qualifiedName;
+    private final QualifiedName qualifiedName;
 
-    public MultiSourceSelect(Map<QualifiedName, AnalyzedRelation> sources,
+    public MultiSourceSelect(QualifiedName name,
+                             Map<QualifiedName, AnalyzedRelation> sources,
                              Collection<? extends Path> outputNames,
                              QuerySpec querySpec,
                              List<JoinPair> joinPairs) {
         assert sources.size() > 1 : "MultiSourceSelect requires at least 2 relations";
+        this.qualifiedName = name;
         this.splitter = new RelationSplitter(querySpec, sources.values(), joinPairs);
         this.sources = initializeSources(sources);
         this.querySpec = querySpec;
@@ -59,11 +60,12 @@ public class MultiSourceSelect implements QueriedRelation {
     }
 
     public MultiSourceSelect(MultiSourceSelect mss, QuerySpec querySpec) {
+        this.qualifiedName = mss.qualifiedName;
         this.sources = mss.sources;
         this.joinPairs = mss.joinPairs;
         this.splitter = new RelationSplitter(
             querySpec,
-            sources.values().stream().map(rs -> rs.relation()).collect(Collectors.toList()),
+            sources.values().stream().map(RelationSource::relation).collect(Collectors.toList()),
             joinPairs);
         this.querySpec = querySpec;
         this.fields = mss.fields;
@@ -109,11 +111,6 @@ public class MultiSourceSelect implements QueriedRelation {
     }
 
     @Override
-    public void setQualifiedName(@Nonnull QualifiedName qualifiedName) {
-        this.qualifiedName = qualifiedName;
-    }
-
-    @Override
     public QuerySpec querySpec() {
         return querySpec;
     }
@@ -121,7 +118,7 @@ public class MultiSourceSelect implements QueriedRelation {
     private static HashMap<QualifiedName, RelationSource> initializeSources(Map<QualifiedName, AnalyzedRelation> originalSources) {
         HashMap<QualifiedName, RelationSource> sources = new LinkedHashMap<>(originalSources.size());
         for (Map.Entry<QualifiedName, AnalyzedRelation> entry : originalSources.entrySet()) {
-            entry.getValue().setQualifiedName(entry.getKey());
+            //entry.getValue().setQualifiedName(entry.getKey());
             RelationSource source = new RelationSource(entry.getValue());
             sources.put(entry.getKey(), source);
         }

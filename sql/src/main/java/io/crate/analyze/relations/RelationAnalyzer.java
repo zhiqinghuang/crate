@@ -231,6 +231,7 @@ public class RelationAnalyzer extends DefaultTraversalVisitor<AnalyzedRelation, 
             }
         } else {
             relation = new MultiSourceSelect(
+                new QualifiedName(() -> context.sources().keySet().stream().flatMap(qn -> qn.getParts().stream()).iterator()),
                 context.sources(),
                 selectAnalysis.outputNames(),
                 querySpec,
@@ -426,9 +427,11 @@ public class RelationAnalyzer extends DefaultTraversalVisitor<AnalyzedRelation, 
         context.startRelation(true);
         AnalyzedRelation childRelation = process(node.getRelation(), context);
         context.endRelation();
-        childRelation.setQualifiedName(new QualifiedName(node.getAlias()));
-        context.currentRelationContext().addSourceRelation(node.getAlias(), childRelation);
-        return childRelation;
+
+        QualifiedName alias = new QualifiedName(node.getAlias());
+        AliasedAnalyzedRelation aliasedAnalyzedRelation = new AliasedAnalyzedRelation(alias, childRelation);
+        context.currentRelationContext().addSourceRelation(node.getAlias(), aliasedAnalyzedRelation);
+        return aliasedAnalyzedRelation;
     }
 
     @Override
