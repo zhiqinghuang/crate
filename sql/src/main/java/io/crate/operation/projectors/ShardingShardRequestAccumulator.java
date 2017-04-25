@@ -23,7 +23,6 @@
 package io.crate.operation.projectors;
 
 import com.carrotsearch.hppc.IntArrayList;
-import io.crate.Constants;
 import io.crate.action.FutureActionListener;
 import io.crate.action.LimitedExponentialBackoff;
 import io.crate.data.BatchAccumulator;
@@ -33,13 +32,17 @@ import io.crate.executor.transport.ShardRequest;
 import io.crate.executor.transport.ShardResponse;
 import io.crate.operation.collect.CollectExpression;
 import io.crate.operation.collect.RowShardResolver;
+import io.crate.settings.CrateSetting;
+import io.crate.types.DataTypes;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.create.BulkCreateIndicesRequest;
 import org.elasticsearch.action.admin.indices.create.BulkCreateIndicesResponse;
 import org.elasticsearch.action.admin.indices.create.TransportBulkCreateIndicesAction;
 import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.action.bulk.BulkRequestExecutor;
-import org.elasticsearch.cluster.ClusterService;
+import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.settings.Setting;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.shard.ShardId;
 
@@ -47,6 +50,7 @@ import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -54,6 +58,10 @@ import java.util.function.Supplier;
 
 public class ShardingShardRequestAccumulator<TReq extends ShardRequest<TReq, TItem>, TItem extends ShardRequest.Item>
     implements BatchAccumulator<Row, Iterator<? extends Row>> {
+
+    public static final CrateSetting<TimeValue> BULK_REQUEST_TIMEOUT_SETTING = CrateSetting.of(Setting.positiveTimeSetting(
+        "bulk.request_timeout", new TimeValue(1, TimeUnit.MINUTES),
+        Setting.Property.NodeScope, Setting.Property.Dynamic), DataTypes.STRING);
 
     private static final BackoffPolicy BACK_OFF_POLICY = LimitedExponentialBackoff.limitedExponential(1000);
 
@@ -146,7 +154,6 @@ public class ShardingShardRequestAccumulator<TReq extends ShardRequest<TReq, TIt
             return clusterService.operationRouting().indexShards(
                 clusterService.state(),
                 indexName,
-                Constants.DEFAULT_MAPPING_TYPE,
                 id,
                 routing
             ).shardId();
@@ -198,7 +205,7 @@ public class ShardingShardRequestAccumulator<TReq extends ShardRequest<TReq, TIt
                 }
 
                 @Override
-                public void onFailure(Throwable e) {
+                public void onFailure(Exception e) {
                     countdown();
                 }
 

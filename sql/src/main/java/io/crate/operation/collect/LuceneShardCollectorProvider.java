@@ -41,7 +41,6 @@ import io.crate.operation.reference.doc.lucene.LuceneCollectorExpression;
 import io.crate.operation.reference.doc.lucene.LuceneReferenceResolver;
 import io.crate.planner.node.dql.RoutedCollectPhase;
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.logging.Loggers;
@@ -70,7 +69,7 @@ public class LuceneShardCollectorProvider extends ShardCollectorProvider {
                                         Settings settings,
                                         TransportActionProvider transportActionProvider,
                                         IndexShard indexShard) {
-        super(clusterService, new ShardReferenceResolver(clusterService, schemas, indexShard), functions,
+        super(clusterService, ShardReferenceResolver.create(clusterService, schemas, indexShard), functions,
             indexNameExpressionResolver, threadPool, settings, transportActionProvider,
             indexShard);
         this.luceneQueryBuilder = luceneQueryBuilder;

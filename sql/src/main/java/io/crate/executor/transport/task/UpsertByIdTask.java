@@ -22,7 +22,6 @@
 package io.crate.executor.transport.task;
 
 import com.carrotsearch.hppc.IntArrayList;
-import io.crate.Constants;
 import io.crate.action.FutureActionListener;
 import io.crate.action.LimitedExponentialBackoff;
 import io.crate.data.BatchConsumer;
@@ -35,9 +34,10 @@ import io.crate.executor.JobTask;
 import io.crate.executor.transport.ShardResponse;
 import io.crate.executor.transport.ShardUpsertRequest;
 import io.crate.metadata.PartitionName;
-import io.crate.metadata.settings.CrateSettings;
 import io.crate.operation.projectors.RetryListener;
+import io.crate.operation.projectors.ShardingShardRequestAccumulator;
 import io.crate.planner.node.dml.UpsertById;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.create.BulkCreateIndicesRequest;
 import org.elasticsearch.action.admin.indices.create.BulkCreateIndicesResponse;
@@ -45,11 +45,10 @@ import org.elasticsearch.action.admin.indices.create.TransportBulkCreateIndicesA
 import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.action.bulk.BulkRequestExecutor;
 import org.elasticsearch.action.support.AutoCreateIndex;
-import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.NotSerializableExceptionWrapper;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.IndexNotFoundException;
@@ -67,7 +66,7 @@ import static java.util.Collections.singletonList;
 
 public class UpsertByIdTask extends JobTask {
 
-    private static final ESLogger LOGGER = Loggers.getLogger(UpsertByIdTask.class);
+    private static final Logger LOGGER = Loggers.getLogger(UpsertByIdTask.class);
     private static final BackoffPolicy BACK_OFF_POLICY = LimitedExponentialBackoff.limitedExponential(1000);
 
     private final ClusterService clusterService;
@@ -98,11 +97,12 @@ public class UpsertByIdTask extends JobTask {
         this.bulkIndices = upsertById.bulkIndices();
         this.numBulkResponses = upsertById.numBulkResponses();
         this.isUpdate = upsertById.insertColumns() == null;
-        this.autoCreateIndex = new AutoCreateIndex(settings, indexNameExpressionResolver);
+        this.autoCreateIndex = new AutoCreateIndex(settings, clusterService.getClusterSettings(),
+            indexNameExpressionResolver);
         this.isDebugEnabled = LOGGER.isDebugEnabled();
 
         reqBuilder = new ShardUpsertRequest.Builder(
-            CrateSettings.BULK_REQUEST_TIMEOUT.extractTimeValue(settings),
+            ShardingShardRequestAccumulator.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
             false,
             upsertById.numBulkResponses() > 0 || items.size() > 1,
             upsertById.updateColumns(),
@@ -203,7 +203,7 @@ public class UpsertByIdTask extends JobTask {
         AtomicReference<Throwable> lastFailure = new AtomicReference<>(null);
         final BitSet responses = new BitSet();
 
-        for (Iterator<Map.Entry<ShardId, ShardUpsertRequest>> it = requestsByShard.entrySet().iterator(); it.hasNext();) {
+        for (Iterator<Map.Entry<ShardId, ShardUpsertRequest>> it = requestsByShard.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<ShardId, ShardUpsertRequest> entry = it.next();
             ShardUpsertRequest request = entry.getValue();
             it.remove();
@@ -221,7 +221,7 @@ public class UpsertByIdTask extends JobTask {
                 }
 
                 @Override
-                public void onFailure(Throwable e) {
+                public void onFailure(Exception e) {
                     lastFailure.set(e);
                     countdown();
                 }
@@ -233,9 +233,11 @@ public class UpsertByIdTask extends JobTask {
                             result.complete(responses);
                         } else {
                             throwable = SQLExceptions.unwrap(throwable, t -> t instanceof RuntimeException);
-                            if (updateAffectedNoRows(throwable)
-                                || partitionWasDeleted(throwable, request.index())
-                                || mixedArgumentTypesFailure(throwable, request.items())) {
+                            // we want to report duplicate key exceptions
+                            if (!SQLExceptions.isDocumentAlreadyExistsException(throwable) &&
+                                (updateAffectedNoRows(throwable)
+                                 || partitionWasDeleted(throwable, request.index())
+                                 || mixedArgumentTypesFailure(throwable, request.items()))) {
                                 result.complete(responses);
                             } else {
                                 result.completeExceptionally(throwable);
@@ -259,7 +261,8 @@ public class UpsertByIdTask extends JobTask {
     }
 
     private boolean mixedArgumentTypesFailure(Throwable throwable, List<ShardUpsertRequest.Item> items) {
-        boolean mixedArgFailure = throwable instanceof ClassCastException || throwable instanceof NotSerializableExceptionWrapper;
+        boolean mixedArgFailure =
+            throwable instanceof ClassCastException || throwable instanceof NotSerializableExceptionWrapper;
         if (mixedArgFailure && isDebugEnabled) {
             LOGGER.debug("ShardUpsert: {} items failed", throwable, items.size());
         }
@@ -282,7 +285,17 @@ public class UpsertByIdTask extends JobTask {
             UpsertById.Item item = items.get(i);
 
             String index = item.index();
-            ShardId shardId = getShardId(state, index, item.id(), item.routing());
+            ShardId shardId;
+            try {
+                shardId = getShardId(state, index, item.id(), item.routing());
+            } catch (IndexNotFoundException e) {
+                if (PartitionName.isPartition(index)) {
+                    continue;
+                } else {
+                    throw e;
+                }
+            }
+
             ShardUpsertRequest request = requestsByShard.get(shardId);
             if (request == null) {
                 request = reqBuilder.newRequest(shardId, item.routing());
@@ -316,7 +329,6 @@ public class UpsertByIdTask extends JobTask {
         return clusterService.operationRouting().indexShards(
             state,
             index,
-            Constants.DEFAULT_MAPPING_TYPE,
             id,
             routing
         ).shardId();

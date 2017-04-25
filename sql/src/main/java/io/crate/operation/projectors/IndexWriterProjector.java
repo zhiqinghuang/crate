@@ -34,7 +34,7 @@ import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.action.admin.indices.create.TransportBulkCreateIndicesAction;
 import org.elasticsearch.action.bulk.BulkRequestExecutor;
 import org.elasticsearch.client.Requests;
-import org.elasticsearch.cluster.ClusterService;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.logging.Loggers;
@@ -87,7 +87,7 @@ public class IndexWriterProjector implements Projector {
         }
         RowShardResolver rowShardResolver = new RowShardResolver(functions, primaryKeyIdents, primaryKeySymbols, clusteredByColumn, routingSymbol);
         ShardUpsertRequest.Builder builder = new ShardUpsertRequest.Builder(
-            BulkShardProcessor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
+            ShardingShardRequestAccumulator.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
             overwriteDuplicates,
             true,
             null,
@@ -96,7 +96,7 @@ public class IndexWriterProjector implements Projector {
             false);
 
         Function<String, ShardUpsertRequest.Item> itemFactory = id ->
-            new ShardUpsertRequest.Item(id, null, new Object[] { source.value() }, null);
+            new ShardUpsertRequest.Item(id, null, new Object[]{source.value()}, null);
 
         accumulator = new ShardingShardRequestAccumulator<>(
             clusterService,

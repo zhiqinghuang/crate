@@ -32,7 +32,7 @@ import io.crate.metadata.Reference;
 import io.crate.operation.InputRow;
 import io.crate.operation.collect.CollectExpression;
 import io.crate.operation.collect.RowShardResolver;
-import org.elasticsearch.cluster.ClusterService;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.settings.Settings;
 
@@ -81,7 +81,7 @@ public class ColumnIndexWriterProjector implements Projector {
             assignments = convert.v2();
         }
         ShardUpsertRequest.Builder builder = new ShardUpsertRequest.Builder(
-            BulkShardProcessor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
+            ShardingShardRequestAccumulator.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
             false, // overwriteDuplicates
             true, // continueOnErrors
             updateColumnNames,
