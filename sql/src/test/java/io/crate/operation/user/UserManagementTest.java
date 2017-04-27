@@ -22,8 +22,8 @@
 
 package io.crate.operation.user;
 
-import io.crate.analyze.CreateUserAnalyzedStatement;
 import io.crate.test.integration.CrateUnitTest;
+import org.elasticsearch.common.settings.Settings;
 import org.junit.Test;
 
 import java.util.concurrent.ExecutionException;
@@ -36,7 +36,7 @@ public class UserManagementTest extends CrateUnitTest {
     public void testNoopUserManagerLoaded() throws Exception {
         expectedException.expect(ExecutionException.class);
         expectedException.expectMessage(containsString("CREATE USER is only supported in enterprise version"));
-        UserManager defaultUserManager = new UserManagerProvider(null, null).get();
-        defaultUserManager.createUser(new CreateUserAnalyzedStatement("root")).get();
+        UserManager defaultUserManager = new UserManagerProvider(null, null, null, null, null, null, null).get();
+        defaultUserManager.createUser("root").get();
     }
 }

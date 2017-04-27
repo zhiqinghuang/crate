@@ -22,7 +22,6 @@
 
 package io.crate.operation.user;
 
-import io.crate.analyze.CreateUserAnalyzedStatement;
 import io.crate.analyze.DropUserAnalyzedStatement;
 
 import java.util.concurrent.CompletableFuture;
@@ -35,10 +34,10 @@ public interface UserManager {
     /**
      * creates a user
      *
-     * @param analysis      analysed CREATE USER statement
+     * @param userName      name of the user to create
      * @return a future which returns the number of rows when the User is created
      */
-    CompletableFuture<Long> createUser(CreateUserAnalyzedStatement analysis);
+    CompletableFuture<Long> createUser(String userName);
 
 
     /**

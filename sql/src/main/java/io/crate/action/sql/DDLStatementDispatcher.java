@@ -205,7 +205,7 @@ public class DDLStatementDispatcher {
 
         @Override
         protected CompletableFuture<Long> visitCreateUserStatement(CreateUserAnalyzedStatement analysis, Row parameters) {
-            return userManager.createUser(analysis);
+            return userManager.createUser(analysis.userName());
         }
 
         @Override

@@ -22,15 +22,19 @@
 
 package io.crate.operation.user;
 
-import io.crate.analyze.CreateUserAnalyzedStatement;
 import io.crate.analyze.DropUserAnalyzedStatement;
 import io.crate.concurrent.CompletableFutures;
 import io.crate.exceptions.UnsupportedFeatureException;
 import io.crate.metadata.sys.SysSchemaInfo;
+import org.elasticsearch.action.support.ActionFilters;
+import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.Provider;
 import org.elasticsearch.common.inject.Singleton;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.transport.TransportService;
 
 import java.util.Iterator;
 import java.util.ServiceConfigurationError;
@@ -43,7 +47,12 @@ public class UserManagerProvider implements Provider<UserManager> {
     private final UserManager userManager;
 
     @Inject
-    public UserManagerProvider(ClusterService clusterService,
+    public UserManagerProvider(Settings settings,
+                               TransportService transportService,
+                               ClusterService clusterService,
+                               ThreadPool threadPool,
+                               ActionFilters actionFilters,
+                               IndexNameExpressionResolver indexNameExpressionResolver,
                                SysSchemaInfo sysSchemaInfo) {
         Iterator<UserManagerFactory> userManagerIterator = ServiceLoader.load(UserManagerFactory.class).iterator();
         UserManagerFactory userManagerFactory = null;
@@ -56,7 +65,8 @@ public class UserManagerProvider implements Provider<UserManager> {
         if (userManagerFactory == null) {
             this.userManager = new UnsupportedUserManager();
         } else {
-            this.userManager = userManagerFactory.create(clusterService, sysSchemaInfo);
+            this.userManager = userManagerFactory.create(settings, transportService, clusterService, threadPool,
+                actionFilters, indexNameExpressionResolver, sysSchemaInfo);
         }
     }
 
@@ -69,7 +79,7 @@ public class UserManagerProvider implements Provider<UserManager> {
     private static class UnsupportedUserManager implements UserManager {
 
         @Override
-        public CompletableFuture<Long> createUser(CreateUserAnalyzedStatement analysis) {
+        public CompletableFuture<Long> createUser(String userName) {
             return CompletableFutures.failedFuture(
                 new UnsupportedFeatureException("CREATE USER is only supported in enterprise version")
             );
