@@ -25,7 +25,7 @@ package io.crate.operation.user;
 import io.crate.analyze.DropUserAnalyzedStatement;
 import io.crate.concurrent.CompletableFutures;
 import io.crate.exceptions.UnsupportedFeatureException;
-import io.crate.metadata.sys.SysSchemaInfo;
+import io.crate.operation.collect.sources.SysTableRegistry;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
@@ -53,7 +53,7 @@ public class UserManagerProvider implements Provider<UserManager> {
                                ThreadPool threadPool,
                                ActionFilters actionFilters,
                                IndexNameExpressionResolver indexNameExpressionResolver,
-                               SysSchemaInfo sysSchemaInfo) {
+                               SysTableRegistry sysTableRegistry) {
         Iterator<UserManagerFactory> userManagerIterator = ServiceLoader.load(UserManagerFactory.class).iterator();
         UserManagerFactory userManagerFactory = null;
         while (userManagerIterator.hasNext()) {
@@ -66,7 +66,7 @@ public class UserManagerProvider implements Provider<UserManager> {
             this.userManager = new UnsupportedUserManager();
         } else {
             this.userManager = userManagerFactory.create(settings, transportService, clusterService, threadPool,
-                actionFilters, indexNameExpressionResolver, sysSchemaInfo);
+                actionFilters, indexNameExpressionResolver, sysTableRegistry);
         }
     }
 
