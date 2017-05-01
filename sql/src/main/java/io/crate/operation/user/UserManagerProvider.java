@@ -27,6 +27,7 @@ import io.crate.analyze.DropUserAnalyzedStatement;
 import io.crate.concurrent.CompletableFutures;
 import io.crate.exceptions.UnsupportedFeatureException;
 import io.crate.operation.collect.sources.SysTableRegistry;
+import io.crate.settings.SharedSettings;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
@@ -63,7 +64,7 @@ public class UserManagerProvider implements Provider<UserManager> {
             }
             userManagerFactory = userManagerIterator.next();
         }
-        if (userManagerFactory == null) {
+        if (userManagerFactory == null || !SharedSettings.ENTERPRISE_LICENSE_SETTING.setting().get(settings)) {
             this.userManager = new NoopUserManager();
         } else {
             this.userManager = userManagerFactory.create(settings, transportService, clusterService, threadPool,
