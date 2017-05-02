@@ -56,6 +56,7 @@ public class Analyzer {
     private final AlterTableAnalyzer alterTableAnalyzer;
     private final AlterBlobTableAnalyzer alterBlobTableAnalyzer;
     private final AlterTableAddColumnAnalyzer alterTableAddColumnAnalyzer;
+    private final AlterTableRenameAnalyzer alterTableRenameAnalyzer;
     private final InsertFromValuesAnalyzer insertFromValuesAnalyzer;
     private final InsertFromSubQueryAnalyzer insertFromSubQueryAnalyzer;
     private final CopyAnalyzer copyAnalyzer;
@@ -100,6 +101,7 @@ public class Analyzer {
         this.alterTableAnalyzer = new AlterTableAnalyzer(schemas);
         this.alterBlobTableAnalyzer = new AlterBlobTableAnalyzer(schemas);
         this.alterTableAddColumnAnalyzer = new AlterTableAddColumnAnalyzer(schemas , fulltextAnalyzerResolver, functions);
+        this.alterTableRenameAnalyzer = new AlterTableRenameAnalyzer(schemas);
         this.insertFromValuesAnalyzer = new InsertFromValuesAnalyzer(functions, schemas);
         this.insertFromSubQueryAnalyzer = new InsertFromSubQueryAnalyzer(functions, schemas, relationAnalyzer);
         this.copyAnalyzer = new CopyAnalyzer(schemas, functions);
@@ -244,6 +246,13 @@ public class Analyzer {
         @Override
         public AnalyzedStatement visitAlterTableAddColumnStatement(AlterTableAddColumn node, Analysis context) {
             return alterTableAddColumnAnalyzer.analyze(node, context);
+        }
+
+        @Override
+        public AnalzyedStatement visitAlterTableRename(AlterTableRename node, Analysis context) {
+            return alterTableRenameAnalyzer.analyze(
+                node, context.parameterContext().parameters(), context.sessionContext().defaultSchema());
+            )
         }
 
         @Override

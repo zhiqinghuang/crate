@@ -28,10 +28,7 @@ import io.crate.Constants;
 import io.crate.action.FutureActionListener;
 import io.crate.action.sql.ResultReceiver;
 import io.crate.action.sql.SQLOperations;
-import io.crate.analyze.AddColumnAnalyzedStatement;
-import io.crate.analyze.AlterTableAnalyzedStatement;
-import io.crate.analyze.PartitionedTableParameterInfo;
-import io.crate.analyze.TableParameter;
+import io.crate.analyze.*;
 import io.crate.concurrent.CompletableFutures;
 import io.crate.concurrent.MultiBiConsumer;
 import io.crate.data.Row;
@@ -104,6 +101,14 @@ public class AlterTableOperation {
         } else {
             addColumnToTable(analysis, result);
         }
+        return result;
+    }
+
+    public CompletableFuture<Long> executeAlterTableRename(final AlterTableRenameAnalyzedStatement analysis) {
+        final CompletableFuture<Long> result = new CompletableFuture<>();
+
+        // Do the rename
+
         return result;
     }
 
