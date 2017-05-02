@@ -252,7 +252,6 @@ public class Analyzer {
         public AnalzyedStatement visitAlterTableRename(AlterTableRename node, Analysis context) {
             return alterTableRenameAnalyzer.analyze(
                 node, context.parameterContext().parameters(), context.sessionContext().defaultSchema());
-            )
         }
 
         @Override
