@@ -198,11 +198,13 @@ public class QueryAndFetchConsumer implements Consumer {
                                                          Limits limits) {
         OrderBy orderBy = qs.orderBy().orElse(null);
         if (orderBy == null) {
-            TopNProjection topN = new TopNProjection(
-                limits.finalLimit(),
-                limits.offset(),
-                InputColumn.fromSymbols(fetchDescription.preFetchOutputs()));
-            plan.addProjection(topN, null, null, null);
+            if (limits.hasLimit()) {
+                TopNProjection topN = new TopNProjection(
+                    limits.finalLimit(),
+                    limits.offset(),
+                    InputColumn.fromSymbols(fetchDescription.preFetchOutputs()));
+                plan.addProjection(topN, null, null, null);
+            }
             return true;
         }
         if (fetchDescription.availablePreFetch(orderBy.orderBySymbols())) {

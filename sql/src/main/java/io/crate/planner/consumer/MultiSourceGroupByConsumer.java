@@ -24,9 +24,9 @@ package io.crate.planner.consumer;
 
 import io.crate.analyze.MultiSourceSelect;
 import io.crate.analyze.QuerySpec;
-import io.crate.analyze.RelationSource;
 import io.crate.analyze.relations.AnalyzedRelation;
 import io.crate.analyze.relations.JoinPairs;
+import io.crate.analyze.relations.QueriedRelation;
 import io.crate.analyze.symbol.Field;
 import io.crate.analyze.symbol.FieldsVisitor;
 import io.crate.analyze.symbol.Symbol;
@@ -117,8 +117,8 @@ public class MultiSourceGroupByConsumer implements Consumer {
             querySpec.hasAggregates(false);
             removePostGroupingActions(querySpec);
 
-            for (RelationSource relationSource : mss.sources().values()) {
-                removePostGroupingActions(relationSource.querySpec());
+            for (AnalyzedRelation relation : mss.sources().values()) {
+                removePostGroupingActions(((QueriedRelation) relation).querySpec());
             }
         }
 
@@ -144,12 +144,13 @@ public class MultiSourceGroupByConsumer implements Consumer {
     /**
      * Update the source outputs with potential additional fields.
      */
-    private static void updateSourceOutputs(Map<QualifiedName, RelationSource> sources, ArrayList<Symbol> newOutputs) {
+    private static void updateSourceOutputs(Map<QualifiedName, AnalyzedRelation> sources, ArrayList<Symbol> newOutputs) {
         java.util.function.Consumer<Field> updateConsumer = field -> {
-            RelationSource relationSource = sources.get(field.relation().getQualifiedName());
-            List<Symbol> currentOutputs = relationSource.querySpec().outputs();
-            if (!currentOutputs.contains(field)) {
+            AnalyzedRelation relation = sources.get(field.relation().getQualifiedName());
+            List<Symbol> currentOutputs = ((QueriedRelation) relation).querySpec().outputs();
+            if (!relation.fields().contains(field)) {
                 currentOutputs.add(field);
+                relation.fields().add(new Field(relation, field.path(), field.valueType()));
             }
         };
         for (Symbol newOutput : newOutputs) {

@@ -23,17 +23,25 @@
 package io.crate.planner.fetch;
 
 import io.crate.analyze.MultiSourceSelect;
-import io.crate.analyze.RelationSource;
+import io.crate.analyze.QuerySpec;
+import io.crate.analyze.relations.AnalyzedRelation;
 import io.crate.analyze.relations.DocTableRelation;
+import io.crate.analyze.relations.QueriedDocTable;
+import io.crate.analyze.relations.QueriedRelation;
 import io.crate.analyze.symbol.*;
 import io.crate.metadata.DocReferences;
+import io.crate.metadata.Reference;
 import io.crate.metadata.RowGranularity;
 import io.crate.metadata.TableIdent;
 import io.crate.metadata.doc.DocSysColumns;
+import io.crate.metadata.doc.DocTableInfo;
+import io.crate.metadata.table.Operation;
 import io.crate.planner.node.fetch.FetchSource;
 import io.crate.sql.tree.QualifiedName;
+import org.elasticsearch.common.collect.Tuple;
 
 import java.util.*;
+import java.util.function.Function;
 
 class MultiSourceFetchPushDown {
 
@@ -57,46 +65,54 @@ class MultiSourceFetchPushDown {
 
     void process() {
         remainingOutputs = statement.querySpec().outputs();
-        statement.querySpec().outputs(new ArrayList<>());
 
         HashMap<Symbol, FetchReference> fetchRefByOriginalSymbol = new HashMap<>();
         ArrayList<Symbol> mssOutputs = new ArrayList<>(
             statement.sources().size() + statement.requiredForQuery().size());
 
-        for (Map.Entry<QualifiedName, RelationSource> entry : statement.sources().entrySet()) {
-            RelationSource source = entry.getValue();
-            if (!(source.relation() instanceof DocTableRelation)) {
-                mssOutputs.addAll(source.querySpec().outputs());
+        for (Map.Entry<QualifiedName, AnalyzedRelation> entry : statement.sources().entrySet()) {
+            QueriedRelation relation = (QueriedRelation) entry.getValue();
+            if (!(relation instanceof QueriedDocTable)) {
+                mssOutputs.addAll(relation.fields());
                 continue;
             }
 
-            DocTableRelation rel = (DocTableRelation) source.relation();
-            HashSet<Field> canBeFetched = filterByRelation(statement.canBeFetched(), rel);
+            DocTableRelation rel = ((QueriedDocTable) relation).tableRelation();
+            DocTableInfo tableInfo = rel.tableInfo();
+            FetchFields canBeFetched = filterByRelation(statement.canBeFetched(), relation, rel);
             if (!canBeFetched.isEmpty()) {
 
                 Field fetchIdColumn = rel.getField(DocSysColumns.FETCHID);
+                assert fetchIdColumn != null: "_fetchId must be accessible";
                 mssOutputs.add(fetchIdColumn);
-                InputColumn fetchIdInput = new InputColumn(mssOutputs.size() - 1);
+                InputColumn fetchIdInput = new InputColumn(mssOutputs.size() - 1, fetchIdColumn.valueType());
 
                 ArrayList<Symbol> qtOutputs = new ArrayList<>(
-                    source.querySpec().outputs().size() - canBeFetched.size() + 1);
+                    relation.querySpec().outputs().size() - canBeFetched.size() + 1);
                 qtOutputs.add(fetchIdColumn);
 
-                for (Symbol output : source.querySpec().outputs()) {
+                for (int i = 0; i < relation.querySpec().outputs().size(); i++) {
+                    Symbol output = relation.querySpec().outputs().get(i);
                     if (!canBeFetched.contains(output)) {
                         qtOutputs.add(output);
-                        mssOutputs.add(output);
+                        mssOutputs.add(relation.fields().get(i));
                     }
                 }
-                for (Field field : canBeFetched) {
+                for (Tuple<Field, Reference> parentAndChild : canBeFetched.parentAndChildren()) {
+                    Field parent = parentAndChild.v1();
+                    Reference child = parentAndChild.v2();
                     FetchReference fr = new FetchReference(
-                        fetchIdInput, DocReferences.toSourceLookup(rel.resolveField(field)));
-                    allocateFetchedReference(fr, rel);
-                    fetchRefByOriginalSymbol.put(field, fr);
+                        fetchIdInput, DocReferences.toSourceLookup(child));
+                    allocateFetchedReference(fr, tableInfo.partitionedByColumns());
+                    fetchRefByOriginalSymbol.put(parent, fr);
                 }
-                source.querySpec().outputs(qtOutputs);
+                QuerySpec querySpec = relation.querySpec().copyAndReplace(Function.identity());
+                querySpec.outputs(qtOutputs);
+                QueriedDocTable newRelation = new QueriedDocTable(rel, querySpec);
+                entry.setValue(newRelation);
+                mssOutputs.set(fetchIdInput.index(), newRelation.getField(DocSysColumns.FETCHID, Operation.READ));
             } else {
-                mssOutputs.addAll(source.querySpec().outputs());
+                mssOutputs.addAll(relation.fields());
             }
         }
 
@@ -107,25 +123,77 @@ class MultiSourceFetchPushDown {
         }
     }
 
-    private static HashSet<Field> filterByRelation(Set<Field> fields, DocTableRelation rel) {
-        HashSet<Field> filteredFields = new HashSet<>();
+    private static FetchFields filterByRelation(Set<Field> fields, AnalyzedRelation rel, DocTableRelation tableRelation) {
+        FetchFields fetchFields = new FetchFields(tableRelation);
         for (Field field : fields) {
-            if (field.relation() == rel) {
-                filteredFields.add(field);
+            if (field.relation().equals(rel)) {
+                fetchFields.add(field);
             }
         }
-        return filteredFields;
+        return fetchFields;
     }
 
-    private void allocateFetchedReference(FetchReference fr, DocTableRelation rel) {
+    private void allocateFetchedReference(FetchReference fr, List<Reference> partitionedByColumns) {
         FetchSource fs = fetchSources.get(fr.ref().ident().tableIdent());
         if (fs == null) {
-            fs = new FetchSource(rel.tableInfo().partitionedByColumns());
+            fs = new FetchSource(partitionedByColumns);
             fetchSources.put(fr.ref().ident().tableIdent(), fs);
         }
         fs.fetchIdCols().add(fr.fetchId());
         if (fr.ref().granularity() == RowGranularity.DOC) {
             fs.references().add(fr.ref());
+        }
+    }
+
+    private final static class FetchFields {
+
+        private final DocTableRelation tableRelation;
+        private Set<Field> canBeFetchedParent = new HashSet<>();
+        private Set<Reference> canBeFetchedChild = new HashSet<>();
+
+        FetchFields(DocTableRelation tableRelation) {
+            this.tableRelation = tableRelation;
+        }
+
+        void add(Field field) {
+            canBeFetchedParent.add(field);
+            canBeFetchedChild.add(tableRelation.resolveField(tableRelation.getField(field.path())));
+        }
+
+        boolean isEmpty() {
+            return canBeFetchedChild.isEmpty();
+        }
+
+        int size() {
+            return canBeFetchedChild.size();
+        }
+
+        boolean contains(Symbol output) {
+            return canBeFetchedChild.contains(output);
+        }
+
+        Iterable<Tuple<Field, Reference>> parentAndChildren() {
+            return () -> new Iterator<Tuple<Field, Reference>>() {
+
+                private final Iterator<Reference> children = canBeFetchedChild.iterator();
+                private final Iterator<Field> parents = canBeFetchedParent.iterator();
+
+                @Override
+                public boolean hasNext() {
+                    return children.hasNext();
+                }
+
+                @Override
+                public Tuple<Field, Reference> next() {
+                    if (!children.hasNext()) {
+                        throw new NoSuchElementException("Iterator is exhausted");
+                    }
+                    Reference child = children.next();
+                    Field parent = parents.next();
+
+                    return new Tuple<>(parent, child);
+                }
+            };
         }
     }
 }
