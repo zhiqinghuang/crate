@@ -43,6 +43,7 @@ public interface ExecutionPhase extends Streamable {
         COUNT(CountPhase.FACTORY),
         FILE_URI_COLLECT(FileUriCollectPhase.FACTORY),
         MERGE(MergePhase.FACTORY),
+        PRIMARY_KEY_LOOKUP(PrimaryKeyLookupPhase.FACTORY),
         FETCH(FetchPhase.FACTORY),
         NESTED_LOOP(NestedLoopPhase.FACTORY),
         TABLE_FUNCTION_COLLECT(null); // no streaming implemented

@@ -22,22 +22,34 @@
 package io.crate.planner.consumer;
 
 
+import io.crate.analyze.OrderBy;
 import io.crate.analyze.QuerySpec;
 import io.crate.analyze.relations.QueriedDocTable;
+import io.crate.analyze.symbol.Symbol;
 import io.crate.analyze.where.DocKeys;
+import io.crate.collections.Lists2;
 import io.crate.exceptions.VersionInvalidException;
+import io.crate.executor.transport.task.elasticsearch.ESGetTask;
+import io.crate.metadata.Routing;
 import io.crate.metadata.doc.DocTableInfo;
-import io.crate.planner.Limits;
-import io.crate.planner.NoopPlan;
-import io.crate.planner.Plan;
-import io.crate.planner.Planner;
-import io.crate.planner.node.dql.ESGet;
+import io.crate.planner.*;
+import io.crate.planner.distribution.DistributionInfo;
+import io.crate.planner.node.dql.PrimaryKeyLookupPhase;
+import io.crate.planner.node.dql.PrimaryKeyLookupPlan;
+import io.crate.planner.projection.Projection;
+import io.crate.planner.projection.builder.ProjectionBuilder;
+import org.elasticsearch.cluster.ClusterState;
+import org.elasticsearch.cluster.routing.Preference;
+import org.elasticsearch.cluster.routing.ShardIterator;
+import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.index.IndexNotFoundException;
+import org.elasticsearch.index.shard.ShardId;
 
-import java.util.Optional;
+import java.util.*;
 
 public class ESGetStatementPlanner {
 
-    public static Plan convert(QueriedDocTable table, Planner.Context context) {
+    public static Plan convert(QueriedDocTable table, Planner.Context context, ClusterService clusterService) {
         QuerySpec querySpec = table.querySpec();
         Optional<DocKeys> optKeys = querySpec.where().docKeys();
         assert !querySpec.hasAggregates() : "Can't create ESGet plan for queries with aggregates";
@@ -49,19 +61,100 @@ public class ESGetStatementPlanner {
         if (docKeys.withVersions()){
             throw new VersionInvalidException();
         }
+
+        Optional<OrderBy> optOrderBy = querySpec.orderBy();
+        List<Symbol> qsOutputs = querySpec.outputs();
+        List<Symbol> toCollect = getToCollectSymbols(qsOutputs, optOrderBy);
         Limits limits = context.getLimits(querySpec);
         if (limits.hasLimit() && limits.finalLimit() == 0) {
             return new NoopPlan(context.jobId());
         }
         table.tableRelation().validateOrderBy(querySpec.orderBy());
-        return new ESGet(
+
+        Projection topNOrEval = ProjectionBuilder.topNOrEval(
+            toCollect,
+            optOrderBy.orElse(null),
+            limits.offset(),
+            limits.finalLimit(),
+            querySpec.outputs()
+        );
+
+        HashMap<Integer, List<DocKeys.DocKey>> docKeysByShard = docKeysByShard(
+            clusterService,
+            docKeys,
+            tableInfo
+        );
+
+        Routing routing = context.allocateRouting(tableInfo, querySpec.where(), Preference.PRIMARY.type());
+
+        PrimaryKeyLookupPhase primaryKeyLookupPhase = new PrimaryKeyLookupPhase(
+            context.jobId(),
             context.nextExecutionPhaseId(),
-            tableInfo,
-            querySpec.outputs(),
-            optKeys.get(),
-            querySpec.orderBy(),
+            "primary-key-lookup",
+            routing, // FIXME: replace with createDocKeysByShardId(),
+            tableInfo.rowGranularity(),
+            tableInfo.ident(),
+            toCollect,
+            Collections.singletonList(topNOrEval),
+            docKeys,
+            docKeysByShard,
+            DistributionInfo.DEFAULT_BROADCAST
+        );
+
+        PrimaryKeyLookupPlan plan = new PrimaryKeyLookupPlan(
+            primaryKeyLookupPhase,
             limits.finalLimit(),
             limits.offset(),
-            context.jobId());
+            qsOutputs.size(),
+            limits.limitAndOffset(),
+            PositionalOrderBy.of(optOrderBy.orElse(null), toCollect)
+        );
+
+        return Merge.ensureOnHandler(plan, context);
+    }
+
+    /**
+     * @return qsOutputs + symbols from orderBy which are not already within qsOutputs (if orderBy is present)
+     */
+    private static List<Symbol> getToCollectSymbols(List<Symbol> qsOutputs, Optional<OrderBy> optOrderBy) {
+        if (optOrderBy.isPresent()) {
+            return Lists2.concatUnique(qsOutputs, optOrderBy.get().orderBySymbols());
+        }
+        return qsOutputs;
+    }
+
+    private static HashMap<Integer, List<DocKeys.DocKey>> docKeysByShard(ClusterService clusterService, DocKeys docKeys, DocTableInfo tableInfo) {
+        HashMap<Integer, List<DocKeys.DocKey>> result = new HashMap();
+        ClusterState state = clusterService.state();
+        for (DocKeys.DocKey docKey: docKeys) {
+            String indexName = ESGetTask.indexName(
+                tableInfo.isPartitioned(),
+                tableInfo.ident(),
+                docKey.partitionValues().orElse(null)
+            );
+            try {
+                ShardIterator shards = clusterService.operationRouting().getShards(
+                    state,
+                    indexName,
+                    docKey.id(),
+                    docKey.routing(),
+                    Preference.PRIMARY.type()
+                );
+                ShardId shardId = shards.shardId();
+                Integer id = shardId.getId();
+                List<DocKeys.DocKey> resultDocKeys = result.get(id);
+                if (resultDocKeys == null) {
+                    resultDocKeys = new ArrayList<>();
+                    result.put(id, resultDocKeys);
+                }
+                resultDocKeys.add(docKey);
+            } catch (IndexNotFoundException e) {
+                if (tableInfo.isPartitioned()) {
+                    continue;
+                }
+                throw e;
+            }
+        }
+        return result;
     }
 }

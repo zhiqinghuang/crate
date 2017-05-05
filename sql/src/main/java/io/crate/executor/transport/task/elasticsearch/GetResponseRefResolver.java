@@ -46,9 +46,9 @@ public class GetResponseRefResolver implements ReferenceResolver<CollectExpressi
     private final DocTableInfo docTableInfo;
     private final Map<String, DocKeys.DocKey> ids2Keys;
 
-    GetResponseRefResolver(Consumer<ColumnIdent> columnConsumer,
-                           DocTableInfo docTableInfo,
-                           Map<String, DocKeys.DocKey> ids2Keys) {
+    public GetResponseRefResolver(Consumer<ColumnIdent> columnConsumer,
+                                  DocTableInfo docTableInfo,
+                                  Map<String, DocKeys.DocKey> ids2Keys) {
         this.columnConsumer = columnConsumer;
         this.docTableInfo = docTableInfo;
         this.ids2Keys = ids2Keys;
