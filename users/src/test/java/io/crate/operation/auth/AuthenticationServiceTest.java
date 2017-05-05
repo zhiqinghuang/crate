@@ -24,6 +24,7 @@ import io.crate.plugin.SQLPlugin;
 import io.crate.settings.SharedSettings;
 import io.crate.test.integration.CrateUnitTest;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.elasticsearch.action.admin.cluster.settings.TransportClusterUpdateSettingsAction;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Setting;
@@ -75,7 +76,7 @@ public class AuthenticationServiceTest extends CrateUnitTest {
     }
 
     private static AuthenticationService authServiceWithSettings(Settings settings){
-        return new AuthenticationService(createClusterService(settings), settings);
+        return new AuthenticationService(createClusterService(settings), settings, mock(TransportClusterUpdateSettingsAction.class));
     }
 
     private static ClusterService createClusterService(Settings settings){
@@ -239,7 +240,7 @@ public class AuthenticationServiceTest extends CrateUnitTest {
                 "2", new String[]{}, new String[]{}) // ignored because empty
             .build();
 
-        AuthenticationService authService = new AuthenticationService(createClusterService(settings), settings);
+        AuthenticationService authService = new AuthenticationService(createClusterService(settings), settings, mock(TransportClusterUpdateSettingsAction.class));
         assertThat(authService.hbaConf(), is(createHbaConf(HBA_1, HBA_2)));
     }
 }

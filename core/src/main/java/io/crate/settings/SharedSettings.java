@@ -37,7 +37,7 @@ public class SharedSettings {
         DataTypes.STRING);
 
     public static final CrateSetting<Boolean> AUTH_HOST_BASED_ENABLED_SETTING = CrateSetting.of(Setting.boolSetting(
-        "auth.host_based.enabled", false, Setting.Property.NodeScope, Setting.Property.Dynamic),
+        "auth.host_based.enabled", false, Setting.Property.NodeScope),
         DataTypes.BOOLEAN);
 
     public static final CrateSetting<Settings> AUTH_HOST_BASED_CONFIG_SETTING = CrateSetting.of(Setting.groupSetting(

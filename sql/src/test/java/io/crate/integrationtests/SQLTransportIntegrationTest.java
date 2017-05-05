@@ -97,7 +97,7 @@ import static org.hamcrest.Matchers.is;
 public abstract class SQLTransportIntegrationTest extends ESIntegTestCase {
 
     @Rule
-    public Timeout globalTimeout = new Timeout(120000); // 2 minutes timeout
+    public Timeout globalTimeout = new Timeout(3600000); // 2 minutes timeout
 
     private static final int ORIGINAL_PAGE_SIZE = Paging.PAGE_SIZE;
 
