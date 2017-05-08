@@ -30,11 +30,7 @@ import io.crate.exceptions.ValidationException;
 import io.crate.metadata.ColumnIdent;
 import io.crate.metadata.table.Operation;
 import io.crate.operation.operator.AndOperator;
-import io.crate.planner.Merge;
 import io.crate.planner.Plan;
-import io.crate.planner.Planner;
-import io.crate.planner.fetch.FetchPushDown;
-import io.crate.planner.node.dql.QueryThenFetch;
 import io.crate.sql.tree.QualifiedName;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.logging.Loggers;
@@ -376,35 +372,14 @@ public class ManyTableConsumer implements Consumer {
         public Plan visitMultiSourceSelect(MultiSourceSelect mss, ConsumerContext context) {
             if (isUnsupportedStatement(mss, context)) return null;
 
-            if (mss.canBeFetched().isEmpty() || context.fetchMode() == FetchMode.NEVER) {
-                return getPlan(mss, context);
-            }
-
-            context.setFetchMode(FetchMode.NEVER);
-            FetchPushDown.Builder<MultiSourceSelect> builder = FetchPushDown.pushDown(mss);
-            if (builder == null) {
-                return getPlan(mss, context);
-            }
-            Planner.Context plannerContext = context.plannerContext();
-            Plan plan = Merge.ensureOnHandler(getPlan(builder.replacedRelation(), context), plannerContext);
-
-            FetchPushDown.PhaseAndProjection phaseAndProjection = builder.build(plannerContext);
-            plan.addProjection(
-                phaseAndProjection.projection,
-                null,
-                null,
-                null
-            );
-            return new QueryThenFetch(plan,  phaseAndProjection.phase);
-        }
-
-        private static Plan getPlan(MultiSourceSelect mss, ConsumerContext context) {
+            TwoTableJoin twoTableJoin;
             if (mss.sources().size() == 2) {
-                return planSubRelation(context, twoTableJoin(mss));
+                twoTableJoin = twoTableJoin(mss);
+            } else {
+                twoTableJoin = buildTwoTableJoinTree(mss);
             }
-            return planSubRelation(context, buildTwoTableJoinTree(mss));
+            return context.plannerContext().planSubRelation(twoTableJoin, context);
         }
-
 
         private static boolean isUnsupportedStatement(MultiSourceSelect statement, ConsumerContext context) {
             if (statement.querySpec().groupBy().isPresent()) {
@@ -418,11 +393,6 @@ public class ManyTableConsumer implements Consumer {
 
             return false;
         }
-
-        private static Plan planSubRelation(ConsumerContext context, TwoTableJoin relation) {
-            return context.plannerContext().planSubRelation(relation, context);
-        }
-
     }
 
     private static class SubSetOfQualifiedNamesPredicate implements Predicate<Symbol> {
