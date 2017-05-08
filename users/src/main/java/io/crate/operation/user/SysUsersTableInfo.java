@@ -19,18 +19,19 @@
 package io.crate.operation.user;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.crate.analyze.WhereClause;
-import io.crate.metadata.ColumnIdent;
-import io.crate.metadata.Routing;
-import io.crate.metadata.RowGranularity;
-import io.crate.metadata.TableIdent;
+import io.crate.metadata.*;
+import io.crate.metadata.expressions.RowCollectExpressionFactory;
 import io.crate.metadata.sys.SysSchemaInfo;
 import io.crate.metadata.table.ColumnRegistrar;
 import io.crate.metadata.table.StaticTableInfo;
 import io.crate.types.DataTypes;
+import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.cluster.service.ClusterService;
 
 import javax.annotation.Nullable;
+import java.util.Map;
 
 public class SysUsersTableInfo extends StaticTableInfo {
 
@@ -61,6 +62,23 @@ public class SysUsersTableInfo extends StaticTableInfo {
     @Override
     public Routing getRouting(WhereClause whereClause, @Nullable String preference) {
         return Routing.forTableOnSingleNode(IDENT, clusterService.localNode().getId());
+    }
+
+    static Map<ColumnIdent, RowCollectExpressionFactory> sysUsersExpressions() {
+        return ImmutableMap.<ColumnIdent, RowCollectExpressionFactory>builder()
+            .put(SysUsersTableInfo.Columns.NAME, () -> new RowContextCollectorExpression<User, BytesRef>() {
+                @Override
+                public BytesRef value() {
+                    return new BytesRef(row.name());
+                }
+            })
+            .put(SysUsersTableInfo.Columns.SUPERUSER, () -> new RowContextCollectorExpression<User, Boolean>() {
+                @Override
+                public Boolean value() {
+                    return row.roles().contains(User.Role.SUPERUSER);
+                }
+            })
+            .build();
     }
 
 }

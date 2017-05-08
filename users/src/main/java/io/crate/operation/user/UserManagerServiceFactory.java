@@ -47,7 +47,7 @@ public class UserManagerServiceFactory implements UserManagerFactory {
 
         sysTableRegistry.registerSysTable(new SysUsersTableInfo(clusterService),
             () -> CompletableFuture.completedFuture(userManagerService.users()),
-            User.sysUsersExpressions());
+            SysUsersTableInfo.sysUsersExpressions());
         return userManagerService;
     }
 }
