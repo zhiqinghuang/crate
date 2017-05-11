@@ -72,25 +72,19 @@ public class MultiSourceSelect implements QueriedRelation {
         splitter.process();
 
         Function<Field, Field> convertFieldToPointToNewRelations = Function.identity();
-        Function<? super Symbol, ? extends Symbol> convertFieldInSymbolsToNewRelations = Function.identity();
         for (Map.Entry<QualifiedName, AnalyzedRelation> entry : mss.sources.entrySet()) {
             AnalyzedRelation relation = entry.getValue();
             QuerySpec spec = splitter.getSpec(relation);
-            QueriedRelation queriedRelation = Relations.upgrade(functions, transactionContext, relation, spec);
-            Function<Field, Field> convertField = f -> {
-                if (f.relation().equals(relation)) {
-                    Field field = queriedRelation.getField(f.path(), Operation.READ);
-                    assert field != null : "Must be able to resolve field from injected relation: " + f;
-                    return field;
-                }
-                return f;
-            };
-            Function<? super Symbol, ? extends Symbol> reWriteFieldToNewSubRelation = FieldReplacer.bind(convertField);
-            convertFieldInSymbolsToNewRelations = convertFieldInSymbolsToNewRelations.andThen(reWriteFieldToNewSubRelation);
-            convertFieldToPointToNewRelations = convertFieldToPointToNewRelations.andThen(convertField);
-            querySpec = querySpec.copyAndReplace(reWriteFieldToNewSubRelation);
+            QueriedRelation queriedRelation = Relations.applyQSToRelation(functions, transactionContext, relation, spec);
+            Function<Field, Field> convertField = f -> mapFieldToNewRelation(f, relation, queriedRelation);
+            querySpec = querySpec.copyAndReplace(FieldReplacer.bind(convertField));
             entry.setValue(queriedRelation);
+
+            convertFieldToPointToNewRelations = convertFieldToPointToNewRelations.andThen(convertField);
         }
+        Function<? super Symbol, ? extends Symbol> convertFieldInSymbolsToNewRelations =
+            FieldReplacer.bind(convertFieldToPointToNewRelations);
+
         if (splitter.remainingOrderBy().isPresent()) {
             splitter.remainingOrderBy().get().orderBy().replace(convertFieldInSymbolsToNewRelations);
         }
@@ -114,6 +108,15 @@ public class MultiSourceSelect implements QueriedRelation {
             canBeFetched,
             splitter.remainingOrderBy()
         );
+    }
+
+    private static Field mapFieldToNewRelation(Field f, AnalyzedRelation oldRelation, QueriedRelation newRelation) {
+        if (f.relation().equals(oldRelation)) {
+            Field field = newRelation.getField(f.path(), Operation.READ);
+            assert field != null : "Must be able to resolve field from injected relation: " + f;
+            return field;
+        }
+        return f;
     }
 
     public MultiSourceSelect(Map<QualifiedName, AnalyzedRelation> sources,

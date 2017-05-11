@@ -180,14 +180,11 @@ public class Rewriter {
         }
         for (Field fieldToRemove : collectFieldsToRemoveFromOutputs.fieldsToNotCollect()) {
             multiSourceQuerySpec.outputs().remove(fieldToRemove);
-            AnalyzedRelation relation = fieldToRemove.relation();
-            if (relation instanceof QueriedRelation) {
-                QueriedRelation qRelation = (QueriedRelation) relation;
+            QueriedRelation relation = (QueriedRelation) fieldToRemove.relation();
 
-                int index = fieldToRemove.index();
-                qRelation.querySpec().outputs().remove(index);
-                relation.fields().remove(fieldToRemove);
-            }
+            int index = fieldToRemove.index();
+            relation.querySpec().outputs().remove(index);
+            relation.fields().remove(fieldToRemove);
         }
     }
 

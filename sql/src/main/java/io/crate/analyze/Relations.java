@@ -39,10 +39,21 @@ class Relations {
         return Lists.transform(outputs, Symbols::pathFromSymbol);
     }
 
-    static QueriedRelation upgrade(Functions functions,
-                                   TransactionContext transactionContext,
-                                   AnalyzedRelation relation,
-                                   QuerySpec querySpec) {
+    /**
+     * Promotes the relation to a QueriedRelation by applying the QuerySpec.
+     *
+     * <pre>
+     * TableRelation -> QueriedTable
+     * QueriedTable  -> QueriedSelect
+     * QueriedSelect -> nested QueriedSelect
+     * </pre>
+     *
+     * If the result is a QueriedTable it is also normalized.
+     */
+    static QueriedRelation applyQSToRelation(Functions functions,
+                                             TransactionContext transactionContext,
+                                             AnalyzedRelation relation,
+                                             QuerySpec querySpec) {
         QueriedRelation newRelation;
         if (relation instanceof DocTableRelation) {
             QueriedDocTable queriedDocTable = new QueriedDocTable((DocTableRelation) relation, querySpec);
