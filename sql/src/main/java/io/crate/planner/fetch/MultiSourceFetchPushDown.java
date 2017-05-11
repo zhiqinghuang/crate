@@ -63,10 +63,32 @@ class MultiSourceFetchPushDown {
         return remainingOutputs;
     }
 
+    /**
+     * Re-write the MSS to utilize fetch.
+     *
+     * Example:
+     * <pre>
+     *     select t1.x, t1.y, t2.x from
+     *       (select x, y from t1) t1,
+     *       (select x from t2) t2
+     *
+     *  Becomes:
+     *
+     *     select t1._fetchId, t2._fetchId from
+     *       (select _fetchId from t1) t1,
+     *       (select _fetchId from t2) t2
+     *
+     *     remainingOutputs: [
+     *        FetchReference(IC(0), Reference(_doc[x])),
+     *        FetchReference(IC(0), Reference(_doc[y])),
+     *        FetchReference(IC(1), Reference(_doc[x])),
+     *     ]
+     * </pre>
+     */
     void process() {
         remainingOutputs = statement.querySpec().outputs();
 
-        HashMap<Symbol, FetchReference> fetchRefByOriginalSymbol = new HashMap<>();
+        Map<Symbol, FetchReference> fetchRefByOriginalSymbol = new IdentityHashMap<>();
         ArrayList<Symbol> mssOutputs = new ArrayList<>(
             statement.sources().size() + statement.requiredForQuery().size());
 
@@ -98,16 +120,24 @@ class MultiSourceFetchPushDown {
                         mssOutputs.add(relation.fields().get(i));
                     }
                 }
+                /*
+                 *         Parent (as Field)
+                 *          |
+                 *  select t1.x from
+                 *      (select x from t1)
+                 *              |
+                 *              Child (as Reference)
+                 */
                 for (Tuple<Field, Reference> parentAndChild : canBeFetched.parentAndChildren()) {
                     Field parent = parentAndChild.v1();
                     Reference child = parentAndChild.v2();
-                    FetchReference fr = new FetchReference(
-                        fetchIdInput, DocReferences.toSourceLookup(child));
+                    FetchReference fr = new FetchReference(fetchIdInput, DocReferences.toSourceLookup(child));
                     allocateFetchedReference(fr, tableInfo.partitionedByColumns());
                     fetchRefByOriginalSymbol.put(parent, fr);
                 }
                 QuerySpec querySpec = relation.querySpec().copyAndReplace(Function.identity());
                 querySpec.outputs(qtOutputs);
+                // create a new relation instead of only mutating the querySpec so that the fields are correct as well
                 QueriedDocTable newRelation = new QueriedDocTable(rel, querySpec);
                 entry.setValue(newRelation);
                 mssOutputs.set(fetchIdInput.index(), newRelation.getField(DocSysColumns.FETCHID, Operation.READ));
@@ -148,8 +178,8 @@ class MultiSourceFetchPushDown {
     private final static class FetchFields {
 
         private final DocTableRelation tableRelation;
-        private Set<Field> canBeFetchedParent = new HashSet<>();
-        private Set<Reference> canBeFetchedChild = new HashSet<>();
+        private Set<Field> canBeFetchedParent = new LinkedHashSet<>();
+        private Set<Reference> canBeFetchedChild = new LinkedHashSet<>();
 
         FetchFields(DocTableRelation tableRelation) {
             this.tableRelation = tableRelation;
@@ -157,7 +187,8 @@ class MultiSourceFetchPushDown {
 
         void add(Field field) {
             canBeFetchedParent.add(field);
-            canBeFetchedChild.add(tableRelation.resolveField(tableRelation.getField(field.path())));
+            Reference reference = tableRelation.resolveField(tableRelation.getField(field.path()));
+            canBeFetchedChild.add(reference);
         }
 
         boolean isEmpty() {
