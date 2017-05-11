@@ -21,6 +21,8 @@ Breaking Changes
 Changes
 =======
 
+ - Added support for `CREATE USER` and `DROP USER`
+
  - Added full support for ``DISTINCT`` on queries where ``GROUP BY``
    is present.
 
