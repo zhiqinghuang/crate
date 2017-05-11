@@ -80,9 +80,6 @@ class NestedLoopConsumer implements Consumer {
 
             QueriedRelation left = statement.left();
             QueriedRelation right = statement.right();
-            if (left instanceof QueriedSelectRelation || right instanceof QueriedSelectRelation) {
-                throw new UnsupportedOperationException("JOIN with sub queries is not supported");
-            }
             List<Symbol> nlOutputs = Lists2.concat(left.fields(), right.fields());
 
             // for nested loops we are fine to remove pushed down orders

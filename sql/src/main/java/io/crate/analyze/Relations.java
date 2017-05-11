@@ -66,6 +66,7 @@ class Relations {
         } else {
             newRelation = new QueriedSelectRelation(
                 ((QueriedRelation) relation), namesFromOutputs(querySpec.outputs()), querySpec);
+            newRelation = (QueriedRelation) SubselectRewriter.rewrite(newRelation);
         }
         newRelation.setQualifiedName(relation.getQualifiedName());
         return newRelation;

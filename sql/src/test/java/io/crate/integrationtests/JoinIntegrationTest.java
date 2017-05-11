@@ -34,6 +34,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static com.carrotsearch.randomizedtesting.RandomizedTest.$;
+import static com.carrotsearch.randomizedtesting.RandomizedTest.$$;
 import static io.crate.testing.TestingHelpers.printRows;
 import static io.crate.testing.TestingHelpers.printedTable;
 import static org.hamcrest.Matchers.arrayContaining;
@@ -710,5 +712,20 @@ public class JoinIntegrationTest extends SQLTransportIntegrationTest {
         // whereClause with query on partitioned column becomes a noMatch after normalization on collector
         // which leads to using RowsBatchIterator.empty() which always had a columnSize of 0
         execute("select * from t as t1 inner join t as t2 on t1.id = t2.id where t2.p = 2");
+    }
+
+    @Test
+    public void testCrossJoinOnComplexVirtualTable() throws Exception {
+        execute("create table t1 (x int)");
+        execute("insert into t1 (x) values (?)", $$($(1), $(2), $(3), $(4)));
+
+        execute("select * from " +
+                "   (select x from (" +
+                "       select x from t1 order by x asc limit 10) tt1 " +
+                "    order by x desc limit 5" +
+                "   ) ttt1," +
+                "   (select min(col1) + max(col1) as x from unnest([1, 2, 3, 4, 5, 6])) tt2");
+        assertThat(printedTable(response.rows()),
+            is(""));
     }
 }

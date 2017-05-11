@@ -83,7 +83,7 @@ public class Merge implements Plan, ResultDescription {
             handlerNodeIds,
             resultDescription.streamOutputs(),
             addProjection(projections, topN),
-            DistributionInfo.DEFAULT_SAME_NODE,
+            DistributionInfo.DEFAULT_BROADCAST,
             resultDescription.orderBy()
         );
         return new Merge(

@@ -73,6 +73,7 @@ public class MultiSourceSelect implements QueriedRelation {
         splitter.process();
 
         Function<Field, Field> convertFieldToPointToNewRelations = Function.identity();
+        boolean hasComplexSubQuery = true;
         for (Map.Entry<QualifiedName, AnalyzedRelation> entry : mss.sources.entrySet()) {
             AnalyzedRelation relation = entry.getValue();
             QuerySpec spec = splitter.getSpec(relation);
@@ -82,6 +83,7 @@ public class MultiSourceSelect implements QueriedRelation {
             entry.setValue(queriedRelation);
 
             convertFieldToPointToNewRelations = convertFieldToPointToNewRelations.andThen(convertField);
+            hasComplexSubQuery &= queriedRelation instanceof QueriedSelectRelation;
         }
         Function<? super Symbol, ? extends Symbol> convertFieldInSymbolsToNewRelations =
             FieldReplacer.bind(convertFieldToPointToNewRelations);
@@ -92,8 +94,15 @@ public class MultiSourceSelect implements QueriedRelation {
         for (JoinPair joinPair : mss.joinPairs) {
             joinPair.replaceCondition(convertFieldInSymbolsToNewRelations);
         }
-        Set<Symbol> requiredForQuery = Sets2.transformedCopy(splitter.requiredForQuery(), convertFieldInSymbolsToNewRelations);
-        Set<Field> canBeFetched = Sets2.transformedCopy(splitter.canBeFetched(), convertFieldToPointToNewRelations);
+        Set<Symbol> requiredForQuery;
+        Set<Field> canBeFetched;
+        if (hasComplexSubQuery) {
+            requiredForQuery = Sets2.transformedCopy(splitter.requiredForQuery(), convertFieldInSymbolsToNewRelations);
+            canBeFetched = Sets2.transformedCopy(splitter.canBeFetched(), convertFieldToPointToNewRelations);
+        } else {
+            requiredForQuery = Collections.emptySet();
+            canBeFetched = Collections.emptySet();
+        }
         return new MultiSourceSelect(
             mss.sources(),
             mss.fields(),
