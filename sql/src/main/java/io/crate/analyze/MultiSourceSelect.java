@@ -25,6 +25,7 @@ import io.crate.analyze.relations.*;
 import io.crate.analyze.symbol.Field;
 import io.crate.analyze.symbol.FieldReplacer;
 import io.crate.analyze.symbol.Symbol;
+import io.crate.collections.Sets2;
 import io.crate.metadata.Functions;
 import io.crate.metadata.Path;
 import io.crate.metadata.TransactionContext;
@@ -91,14 +92,8 @@ public class MultiSourceSelect implements QueriedRelation {
         for (JoinPair joinPair : mss.joinPairs) {
             joinPair.replaceCondition(convertFieldInSymbolsToNewRelations);
         }
-        Set<Symbol> requiredForQuery = new HashSet<>(splitter.requiredForQuery().size());
-        for (Symbol symbol : splitter.requiredForQuery()) {
-            requiredForQuery.add(convertFieldInSymbolsToNewRelations.apply(symbol));
-        }
-        Set<Field> canBeFetched = new HashSet<>(splitter.canBeFetched().size());
-        for (Field field : splitter.canBeFetched()) {
-            canBeFetched.add(convertFieldToPointToNewRelations.apply(field));
-        }
+        Set<Symbol> requiredForQuery = Sets2.transformedCopy(splitter.requiredForQuery(), convertFieldInSymbolsToNewRelations);
+        Set<Field> canBeFetched = Sets2.transformedCopy(splitter.canBeFetched(), convertFieldToPointToNewRelations);
         return new MultiSourceSelect(
             mss.sources(),
             mss.fields(),
@@ -109,6 +104,7 @@ public class MultiSourceSelect implements QueriedRelation {
             splitter.remainingOrderBy()
         );
     }
+
 
     private static Field mapFieldToNewRelation(Field f, AnalyzedRelation oldRelation, QueriedRelation newRelation) {
         if (f.relation().equals(oldRelation)) {
