@@ -107,7 +107,7 @@ public class Analyzer {
         this.insertFromValuesAnalyzer = new InsertFromValuesAnalyzer(functions, schemas);
         this.insertFromSubQueryAnalyzer = new InsertFromSubQueryAnalyzer(functions, schemas, relationAnalyzer);
         this.copyAnalyzer = new CopyAnalyzer(schemas, functions);
-        this.updateAnalyzer = new UpdateAnalyzer(schemas, functions, relationAnalyzer);
+        this.updateAnalyzer = new UpdateAnalyzer(functions, relationAnalyzer);
         this.deleteAnalyzer = new DeleteAnalyzer(functions, relationAnalyzer);
         this.dropRepositoryAnalyzer = new DropRepositoryAnalyzer(repositoryService);
         this.createRepositoryAnalyzer = new CreateRepositoryAnalyzer(repositoryService, repositoryParamValidator);
@@ -178,7 +178,7 @@ public class Analyzer {
 
         @Override
         public AnalyzedStatement visitDropTable(DropTable node, Analysis context) {
-            return dropTableAnalyzer.analyze(node, context.sessionContext().defaultSchema());
+            return dropTableAnalyzer.analyze(node, context.sessionContext());
         }
 
         @Override
@@ -188,7 +188,7 @@ public class Analyzer {
 
         public AnalyzedStatement visitShowCreateTable(ShowCreateTable node, Analysis analysis) {
             ShowCreateTableAnalyzedStatement showCreateTableStatement =
-                showCreateTableAnalyzer.analyze(node.table(), analysis.sessionContext().defaultSchema());
+                showCreateTableAnalyzer.analyze(node.table(), analysis.sessionContext());
             analysis.rootRelation(showCreateTableStatement);
             return showCreateTableStatement;
         }
@@ -228,7 +228,8 @@ public class Analyzer {
 
         @Override
         public AnalyzedStatement visitAlterBlobTable(AlterBlobTable node, Analysis context) {
-            return alterBlobTableAnalyzer.analyze(node, context.parameterContext().parameters());
+            return alterBlobTableAnalyzer.analyze(node, context.parameterContext().parameters(),
+                context.sessionContext().user());
         }
 
         @Override
@@ -244,7 +245,7 @@ public class Analyzer {
         @Override
         public AnalyzedStatement visitAlterTable(AlterTable node, Analysis context) {
             return alterTableAnalyzer.analyze(
-                node, context.parameterContext().parameters(), context.sessionContext().defaultSchema());
+                node, context.parameterContext().parameters(), context.sessionContext());
         }
 
         @Override

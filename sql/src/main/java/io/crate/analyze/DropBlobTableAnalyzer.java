@@ -42,7 +42,7 @@ class DropBlobTableAnalyzer {
         BlobTableInfo tableInfo = null;
         boolean isNoop = false;
         try {
-            tableInfo = schemas.getTableInfo(tableIdent);
+            tableInfo = schemas.getTableInfo(tableIdent, null);
         } catch (ResourceUnknownException e) {
             if (node.ignoreNonExistentTable()) {
                 isNoop = true;
