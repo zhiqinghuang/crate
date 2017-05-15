@@ -153,7 +153,8 @@ crate_layer = ConnectingCrateLayer(
     env={'JAVA_HOME': os.environ.get('JAVA_HOME', '')},
     settings={
         'license.enterprise': 'true',
-        'lang.js.enabled': 'true'
+        'lang.js.enabled': 'true',
+        'auth.host_based.enabled': 'false'
     }
 )
 

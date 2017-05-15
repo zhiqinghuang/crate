@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import socket
-from threading import Lock
+from threading import RLock
 
 
 def public_ipv4():
@@ -26,8 +26,7 @@ class PortPool(object):
 
     def __init__(self):
         self.ports = set()
-        self.lock = Lock()
-        self.range_lock = Lock()
+        self.lock = RLock()
 
     def bind_port(self, addr, port):
         sock = socket.socket()
@@ -59,7 +58,7 @@ class PortPool(object):
 
     def get_range(self, addr='127.0.0.1', range_size=1):
         retries = 0
-        with self.range_lock:
+        with self.lock:
             while True:
                 port_start = self.get(addr)
                 port_end = port_start + range_size + 1
