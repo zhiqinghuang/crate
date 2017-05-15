@@ -122,7 +122,7 @@ public class Analyzer {
     public Analysis boundAnalyze(Statement statement, SessionContext sessionContext, ParameterContext parameterContext) {
         Analysis analysis = new Analysis(sessionContext, parameterContext, ParamTypeHints.EMPTY);
         AnalyzedStatement analyzedStatement = analyzedStatement(statement, analysis);
-        userManager.checkPermission(analyzedStatement, sessionContext);
+        userManager.ensureAuthorized(analyzedStatement, sessionContext);
         analysis.analyzedStatement(analyzedStatement);
         return analysis;
     }

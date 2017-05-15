@@ -25,6 +25,7 @@ package io.crate.operation.user;
 import io.crate.action.sql.SessionContext;
 import io.crate.analyze.AnalyzedStatement;
 import io.crate.analyze.DropUserAnalyzedStatement;
+import io.crate.exceptions.UnauthorizedException;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -53,7 +54,8 @@ public interface UserManager {
      * checks if user is allowed to execute statement
      * @param analysis          analysed statement
      * @param sessionContext    current session context
+     * @throws UnauthorizedException if the user is not authorized to perform the statement
      */
-    void checkPermission(AnalyzedStatement analysis, SessionContext sessionContext);
+    void ensureAuthorized(AnalyzedStatement analysis, SessionContext sessionContext);
 
 }

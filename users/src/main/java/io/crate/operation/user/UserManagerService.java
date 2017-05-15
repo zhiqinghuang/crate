@@ -88,8 +88,8 @@ public class UserManagerService implements UserManager, ClusterStateListener {
     }
 
     @Override
-    public void checkPermission(AnalyzedStatement analyzedStatement,
-                                   SessionContext sessionContext) {
+    public void ensureAuthorized(AnalyzedStatement analyzedStatement,
+                                 SessionContext sessionContext) {
         permissionVisitor.process(analyzedStatement, sessionContext);
     }
 
