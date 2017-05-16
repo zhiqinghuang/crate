@@ -63,6 +63,10 @@ could actually see performance degradation. Each shard comes with a cost in
 terms of open files, RAM, and CPU cycles. Smaller shards also means small shard
 indexes, which can adversely affect computed search term relevance.
 
+For performance reasons, one thousand shards per table per node is considered the
+highest recommended configuration. If you exceed this you will experience a
+failing cluster check.
+
 Balancing Allocation
 --------------------
 
@@ -76,7 +80,20 @@ based on the assumption that your nodes have two CPUs each.
 .. NOTE::
 
    For the purposes of calculating how many shards a table should be clustered
-   into, you can typically ignore replicas and partitions.
+   into, you can typically ignore replica partitions as these are not usually
+   queried across for reads.
+
+.. CAUTION::
+
+   If you are using :ref:`partitioned_tables`, note that each partition is
+   clustered into as many shards as you configure for the table.
+
+   So, for example, a table with four shards and two partitions will have eight
+   shards that can be commonly queried across. But a query that only touches
+   one partition will only query across four shards.
+
+   How this factors into balancing your shard allocation will depend on the
+   types of queries you intend to run.
 
 Optimising For Ingestion Performance
 ====================================
