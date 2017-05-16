@@ -22,8 +22,11 @@
 package io.crate.planner.projection;
 
 import com.carrotsearch.hppc.IntSet;
+import com.google.common.collect.ImmutableMap;
 import io.crate.analyze.symbol.Symbol;
+import io.crate.analyze.symbol.Symbols;
 import io.crate.collections.Lists2;
+import io.crate.metadata.Path;
 import io.crate.metadata.TableIdent;
 import io.crate.planner.node.fetch.FetchSource;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -33,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class FetchProjection extends Projection {
 
@@ -125,5 +129,16 @@ public class FetchProjection extends Projection {
     public void writeTo(StreamOutput out) throws IOException {
         throw new UnsupportedOperationException("writeTo is not supported for " +
                                                 FetchProjection.class.getSimpleName());
+    }
+
+    @Override
+    public Map<String, Object> mapRepresentation() {
+        return ImmutableMap.of(
+            "type", "Fetch",
+            "outputs", outputSymbols.stream()
+                .map(Symbols::pathFromSymbol)
+                .map(Path::outputName)
+                .collect(Collectors.joining(", "))
+        );
     }
 }

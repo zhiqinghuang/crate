@@ -22,6 +22,8 @@
 
 package io.crate.planner.projection;
 
+import com.google.common.collect.ImmutableMap;
+import io.crate.analyze.OrderBy;
 import io.crate.analyze.symbol.Symbol;
 import io.crate.analyze.symbol.SymbolVisitors;
 import io.crate.analyze.symbol.Symbols;
@@ -30,11 +32,9 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class OrderedTopNProjection extends Projection {
 
@@ -167,5 +167,19 @@ public class OrderedTopNProjection extends Projection {
         result = 31 * result + Arrays.hashCode(reverseFlags);
         result = 31 * result + Arrays.hashCode(nullsFirst);
         return result;
+    }
+
+    @Override
+    public Map<String, Object> mapRepresentation() {
+        return ImmutableMap.of(
+            "type", "OrderByTopN",
+            "limit", limit,
+            "offset", offset,
+            "outputs", outputs.stream()
+                .map(Symbol::toString)
+                .collect(Collectors.joining(", ")),
+            "orderBy", OrderBy.prettyPrint(
+                new StringBuilder("["), orderBy, reverseFlags, nullsFirst).append("]").toString()
+        );
     }
 }

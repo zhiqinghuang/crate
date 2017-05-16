@@ -195,8 +195,13 @@ public class OrderBy implements Writeable {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("OrderBy{");
-        for (int i = 0; i < orderBySymbols.size(); i++) {
-            Symbol symbol = orderBySymbols.get(i);
+        prettyPrint(sb, orderBySymbols, reverseFlags, nullsFirst);
+        return sb.toString();
+    }
+
+    public static StringBuilder prettyPrint(StringBuilder sb, List<Symbol> symbols, boolean[] reverseFlags, Boolean[] nullsFirst) {
+        for (int i = 0; i < symbols.size(); i++) {
+            Symbol symbol = symbols.get(i);
             sb.append(symbol);
             sb.append(" ");
             if (reverseFlags[i]) {
@@ -209,10 +214,10 @@ public class OrderBy implements Writeable {
                 sb.append(" ");
                 sb.append(nullFirst ? "NULLS FIRST" : "NULLS LAST");
             }
-            if (i + 1 < orderBySymbols.size()) {
+            if (i + 1 < symbols.size()) {
                 sb.append(" ");
             }
         }
-        return sb.toString();
+        return sb;
     }
 }

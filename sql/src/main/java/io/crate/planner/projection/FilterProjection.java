@@ -22,9 +22,11 @@
 package io.crate.planner.projection;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.crate.analyze.symbol.Symbol;
 import io.crate.analyze.symbol.SymbolVisitors;
 import io.crate.analyze.symbol.Symbols;
+import io.crate.analyze.symbol.format.SymbolPrinter;
 import io.crate.collections.Lists2;
 import io.crate.metadata.RowGranularity;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -32,6 +34,7 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -109,5 +112,13 @@ public class FilterProjection extends Projection {
     public int hashCode() {
         int result = super.hashCode();
         return 31 * result + (query != null ? query.hashCode() : 0);
+    }
+
+    @Override
+    public Map<String, Object> mapRepresentation() {
+        return ImmutableMap.of(
+            "type", "Filter",
+            "filter", SymbolPrinter.INSTANCE.printSimple(query)
+        );
     }
 }

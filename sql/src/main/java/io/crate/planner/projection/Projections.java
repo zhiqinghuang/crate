@@ -30,11 +30,11 @@ import java.util.Collection;
 public class Projections {
 
     public static Collection<? extends Projection> shardProjections(Collection<? extends Projection> projections) {
-        return Collections2.filter(projections, Projection.IS_SHARD_PROJECTION);
+        return Collections2.filter(projections, Projection.IS_SHARD_PROJECTION::test);
     }
 
     public static Collection<? extends Projection> nodeProjections(Collection<? extends Projection> projections) {
-        return Collections2.filter(projections, Projection.IS_NODE_PROJECTION);
+        return Collections2.filter(projections, Projection.IS_NODE_PROJECTION::test);
     }
 
     public static boolean hasAnyShardProjections(Iterable<? extends Projection> projections) {

@@ -21,6 +21,7 @@
 
 package io.crate.planner.projection;
 
+import com.google.common.collect.ImmutableMap;
 import io.crate.analyze.symbol.AggregateMode;
 import io.crate.analyze.symbol.Aggregation;
 import io.crate.analyze.symbol.Symbol;
@@ -33,7 +34,9 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class GroupProjection extends Projection {
 
@@ -131,5 +134,18 @@ public class GroupProjection extends Projection {
 
     public AggregateMode mode() {
         return mode;
+    }
+
+    @Override
+    public Map<String, Object> mapRepresentation() {
+        return ImmutableMap.of(
+            "type", "HashAggregation",
+            "keys", keys.stream()
+                .map(Symbol::toString)
+                .collect(Collectors.joining(", ")),
+            "aggregations", values.stream()
+                .map(Symbol::toString)
+                .collect(Collectors.joining(", "))
+        );
     }
 }
